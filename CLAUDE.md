@@ -75,7 +75,14 @@ once.
 
 ### 5. Put the shortcuts on their desktop
 
-Run `./install/shortcuts.sh "$(pwd)"`.
+On macOS or Linux, run `./install/shortcuts.sh "$(pwd)"`.
+
+On Windows, run
+`powershell -ExecutionPolicy Bypass -File install\shortcuts.ps1 -InstallDir "%CD%"`.
+
+**On Windows, say plainly that this part is newer and less tested**, and ask them
+to tell you if anything looks wrong. Honesty here buys more goodwill than a
+confident install that fails.
 
 Then **walk them through the first launch out loud**, because this is where
 people quit:

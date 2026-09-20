@@ -75,7 +75,11 @@ build, written from scratch, not a fork.
 
 ## Honest limits
 
-- **Mac first.** Windows is coming; today this is tested on macOS.
+- **Mac is tested. Windows is written but unverified.** The installer, the
+  skills and the memory are plain text and work anywhere. The Windows shortcut
+  script and launchers are written and shipped, but **nobody has run them on a
+  real Windows machine yet.** When someone does and it works, this line changes.
+  Until then we are not going to claim it.
 - **Voice needs a microphone**, and the hand-tracked board needs a camera.
 - **First install downloads a lot** — the speech models are large, and they are fetched at setup rather
   than shipped in this repo.
