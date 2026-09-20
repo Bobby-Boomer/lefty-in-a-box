@@ -1,0 +1,11 @@
+# Never commit the heavy or the private
+.venv/
+node_modules/
+models/
+*.mp3
+*.wav
+*.pt
+*.bin
+.env
+.DS_Store
+chrome-profile/
