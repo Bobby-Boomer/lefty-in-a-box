@@ -87,13 +87,21 @@ confident install that fails.
 Then **walk them through the first launch out loud**, because this is where
 people quit:
 
+On a Mac:
+
 > "The very first time you double-click one of those, your Mac may say it can't
 > verify the developer. That's normal for anything not from the App Store.
 > Right-click the icon, choose Open, then Open again. Just once, then it behaves
 > like any other app."
 
-**Do not skip this.** An unexplained Gatekeeper warning is the single most
-likely reason someone abandons the install.
+On Windows:
+
+> "The first time, Windows may show a blue box saying it protected your PC.
+> That's normal for anything without a paid signing certificate. Click More
+> info, then Run anyway. Just once."
+
+**Do not skip this.** An unexplained Gatekeeper or SmartScreen warning is the
+single most likely reason someone abandons the install.
 
 ### 6. The business interview — the part that matters
 
