@@ -24,6 +24,10 @@ We would rather tell you that in the first paragraph than have you find it in st
 
 - **Memory** — plain text files on your own computer. Your AI reads them at the start of every conversation
   and writes to them as you work, so it stops forgetting your business. Nothing leaves your machine.
+  **If it gets something wrong, you open the file and fix it, and it believes the file.**
+  The folder is already shaped as an [Obsidian](https://obsidian.md) vault if you want to browse it
+  visually, but **Obsidian is optional and we do not install it** — these are text files and any editor
+  opens them.
 - **Voice** — hold one key, talk, let go. It answers through your speakers in a real voice.
 - **A face** — a full-screen visualizer so you can see at a glance whether it is listening, thinking, or
   answering.

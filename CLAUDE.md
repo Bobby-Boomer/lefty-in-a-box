@@ -58,7 +58,8 @@ board is out. Say it plainly and move on — no apology.
 Four pieces. Explain each in one sentence, in terms of what it does for them:
 
 - **Memory** — "I remember your business between conversations instead of
-  starting from zero every time." *Always recommend this one. It is the point.*
+  starting from zero every time. Plain text files on your computer, which you can
+  open and fix." *Always recommend this one. It is the point.*
 - **Voice** — "Hold a key, talk, and I answer out loud."
 - **Screen** — "A full-screen face so you can see when I'm listening or
   thinking."
@@ -115,9 +116,20 @@ conversation, not a form. Six or seven questions, one at a time:
 - What should I never do without asking you first?
 - How do you like to be talked to — blunt, gentle, funny?
 
-Write the answers into `memory/` as plain markdown. Tell them where it lives and
-that they can edit it any time, because **it is their file on their computer and
-nothing leaves the machine.**
+Write the answers into the files that are already in `memory/` — `Business.md`,
+`People.md`, `Rules.md`, `Goals.md`. **Fill in the existing headings rather than
+inventing new files.** The structure is doing real work: every folder has an index
+note named after the folder, which is how you always know where to look.
+
+Use `[[double bracket]]` links when one note refers to another. They read fine as
+plain text and become clickable if they ever open the folder in Obsidian.
+
+Tell them where it lives and that they can edit it any time, because **it is their
+file on their computer and nothing leaves the machine.**
+
+**Do not say you installed Obsidian. You did not.** If they ask, it is free and
+optional, the folder is already shaped for it, and nothing changes for you either
+way because you read the text.
 
 ### 7. Finish by being useful
 
