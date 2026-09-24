@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>voice line // digital rain</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#000;overflow:hidden;cursor:none}
+  canvas{display:block;width:100vw;height:100vh}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+"use strict";
+(function () {
+
+// ---------------------------------------------------------------------------
+// config
+// ---------------------------------------------------------------------------
+const CELL_W = 15;          // css px per glyph column
+const CELL_H = 19;          // css px per glyph row
+const TIERS  = 14;          // baked brightness levels in the atlas
+const DPR_CAP = 1.25;
+
+const POLL_MS      = 100;   // ~10 Hz
+const LEVEL_TAU    = 0.09;  // ~90ms smoothing on level
+const STALE_SEC    = 2.0;   // no answer for this long -> ease home to idle
+const INTRO_DUR    = 3.9;
+
+// --- cinematic camera (Space) ----------------------------------------------
+const FLY_TARGET_S   = 30;    // whole run, finale included
+const FLY_SPEED_PX   = 205;   // ONE apparent speed, screen px/sec, whole deck
+const FLY_ZOOM_RATE  = 0.55;  // log-zoom units/sec, folded into shot duration
+const FLY_DUR_MIN    = 2.4;
+const FLY_DUR_MAX    = 5.4;
+const FLY_FINALE_DUR = 4.6;
+const FLY_ZOOM_MAX   = 4;     // deepest push; also the deepest atlas bake
+const FLY_TILT_SHEAR = 0.075; // affine stand-in for perspective
+const FLY_TILT_SQUASH= 0.93;
+const FLY_FACE_GATE  = 0.55;  // w.speaking must clear this to deal a face shot
+// atlas is re-baked at these zoom steps so close-ups stay crisp instead of
+// scaling a prebaked image into mush
+const ATLAS_STEPS = [1, 1.5, 2, 3, 4];
+
+const GLYPHS = (
+  "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ" +
+  "0123456789" +
+  ":=*+<>|╌╎"
+).split("");
+
+// palette targets, blended by eased state weight (multiply tint over grayscale)
+const PAL = {
+  idle:      [ 20, 255,  70],
+  listening: [  0, 240, 190],
+  thinking:  [ 90, 255, 120],
+  speaking:  [130, 255, 165],
+  alert:     [255,  62,  44]
+};
+
+// ---------------------------------------------------------------------------
+// url modes
+// ---------------------------------------------------------------------------
+const Q = new URLSearchParams(location.search);
+const SHOT_STATE = Q.get("shot");                 // deterministic freeze-frame
+const SHOT_T     = parseFloat(Q.get("t") || "0") / 1000;
+const MOCK_STATE = Q.get("mockstate");            // local sim, never hits /state
+// ?fly=<ms> -- freeze a flythrough mid-run so headless chrome can screenshot it
+const FLY_T      = Q.has("fly") ? parseFloat(Q.get("fly")) / 1000 : null;
+const IS_FLYSHOT = FLY_T !== null;
+const FLY_SCENE  = Q.get("flystate") || "loop";   // what the scene does under it
+const IS_SHOT    = !!SHOT_STATE || IS_FLYSHOT;
+const LOCAL_SIM  = IS_SHOT || !!MOCK_STATE;
+
+// ---------------------------------------------------------------------------
+// deterministic rng (never Math.random, so ?shot= reproduces exactly)
+// ---------------------------------------------------------------------------
+let _seed = IS_SHOT ? 0x9e3779b9 : (Date.now() >>> 0);
+function srand(s) { _seed = s >>> 0; }
+function rnd() {
+  _seed |= 0; _seed = (_seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(_seed ^ (_seed >>> 15), 1 | _seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+// ---------------------------------------------------------------------------
+// canvas
+// ---------------------------------------------------------------------------
+const cv = document.getElementById("c");
+const ctx = cv.getContext("2d", { alpha: false });
+let W = 0, H = 0, DPR = 1;
+let cols = 0, rows = 0;
+
+// ---------------------------------------------------------------------------
+// glyph atlas: baked once, blitted per frame. grayscale (white) so a single
+// full-screen multiply can tint the whole field any color, any frame.
+// ---------------------------------------------------------------------------
+let atlas = null, aCW = 0, aCH = 0;
+const atlasCache = new Map();   // zoom step -> {canvas, cw, ch}
+let atlasQ = 1;
+
+// q scales the bake resolution. The blit still lands in CELL_W x CELL_H world
+// units, so a q that matches the camera zoom means source pixels ~= screen
+// pixels: crisp at depth. Shadow blur scales with q too, or the baked bloom
+// would shrink as you dive in.
+function bakeAtlasAt(q) {
+  const cw = Math.ceil(CELL_W * DPR * q);
+  const ch = Math.ceil(CELL_H * DPR * q);
+  const a = document.createElement("canvas");
+  a.width = GLYPHS.length * cw;
+  a.height = TIERS * ch;
+  const g = a.getContext("2d");
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = Math.floor(CELL_H * 0.86 * DPR * q) +
+    'px "Osaka-Mono","Hiragino Kaku Gothic ProN",Menlo,monospace';
+
+  for (let t = 0; t < TIERS; t++) {
+    const v = Math.pow((t + 1) / TIERS, 1.45);
+    g.globalAlpha = v;
+    g.fillStyle = "#fff";
+    // bake the bloom into the hot tiers -- free glow at blit time
+    if (t >= TIERS - 3) {
+      g.shadowColor = "rgba(255,255,255," + (0.5 * v).toFixed(3) + ")";
+      g.shadowBlur = (2 + 5 * (t - TIERS + 3)) * DPR * q;
+    } else {
+      g.shadowBlur = 0;
+      g.shadowColor = "transparent";
+    }
+    for (let i = 0; i < GLYPHS.length; i++) {
+      g.fillText(GLYPHS[i], i * cw + cw / 2, t * ch + ch / 2);
+    }
+  }
+  return { canvas: a, cw: cw, ch: ch };
+}
+
+function useAtlas(q) {
+  let e = atlasCache.get(q);
+  if (!e) { e = bakeAtlasAt(q); atlasCache.set(q, e); }
+  atlas = e.canvas; aCW = e.cw; aCH = e.ch; atlasQ = q;
+}
+
+// nearest baked step at or above the zoom, so we never upscale a bake
+function atlasStepFor(z) {
+  for (const s of ATLAS_STEPS) if (s >= z - 0.001) return s;
+  return ATLAS_STEPS[ATLAS_STEPS.length - 1];
+}
+
+function bakeAtlas() {
+  atlasCache.clear();
+  useAtlas(1);
+}
+
+// warm the deep bakes while the machine is idle, so the first Space press does
+// not stall on ~900 shadowed fillText calls per level
+function prewarmAtlases() {
+  // CRITICAL: bind these. Calling `(window.requestIdleCallback || setTimeout)(fn)`
+  // invokes them detached from window, and Chrome throws "Illegal invocation" --
+  // which fired during boot, before requestAnimationFrame(frame) ever ran, and
+  // left the whole page black.
+  const idle = window.requestIdleCallback
+    ? window.requestIdleCallback.bind(window)
+    : (fn) => window.setTimeout(fn, 1);
+  const todo = ATLAS_STEPS.filter((s) => s !== 1);
+  const next = () => {
+    const s = todo.shift();
+    if (s === undefined) return;
+    if (!atlasCache.has(s)) atlasCache.set(s, bakeAtlasAt(s));
+    idle(next);
+  };
+  idle(next);
+}
+
+function blit(gi, tier, px, py) {
+  ctx.drawImage(atlas, gi * aCW, tier * aCH, aCW, aCH, px, py, CELL_W, CELL_H);
+}
+
+// ---------------------------------------------------------------------------
+// procedural face -> per-cell mask. no assets, ever.
+// ---------------------------------------------------------------------------
+const FW = 420, FH = 560;
+let faceSrc = null;
+let mask = null;                       // Float32Array(cols*rows), 0..1 shading
+let sil = null;                        // Float32Array(cols*rows), 0..1 head silhouette
+let faceSil = null;
+let MOUTH_Y = 0;                       // mouth y in face-canvas units
+let fc0 = 0, fc1 = 0, fr0 = 0, fr1 = 0;  // grid bbox of the face
+let mouthC = 0, mouthR = 0, mouthRX = 0, mouthRY = 0;  // mouth in grid units
+let faceBox = { x: 0, y: 0, w: 0, h: 0 };   // face rect in world px
+// camera aim points, normalized inside the FW x FH face box
+let FEAT = {};
+
+function headPath(g, cx, cy, rx, ry) {
+  g.beginPath();
+  const N = 160;
+  for (let i = 0; i <= N; i++) {
+    const t = (i / N) * Math.PI * 2;
+    const u = Math.cos(t), s = Math.sin(t);
+    const down = Math.max(0, -u), up = Math.max(0, u);
+    const wprof = 1 - 0.36 * Math.pow(down, 1.30) - 0.16 * Math.pow(up, 2.2);
+    const hprof = u > 0 ? 1 : 1.18;      // chin drops further than the crown
+    const x = cx + rx * s * wprof;
+    const y = cy - ry * u * hprof;
+    if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+  }
+  g.closePath();
+}
+
+// Painted as a hard-edged stencil, not an airbrush. At glyph-grid resolution
+// (~40 rows for the whole head) soft gradients turn to mush -- only widely
+// separated tones survive the downsample and read as a face.
+function bakeFace() {
+  const CX = FW / 2, CY = FH * 0.46, RX = 150, RY = 208;
+
+  // ---- silhouette: solid head, used to carve a void in the rain ----
+  const silc = document.createElement("canvas");
+  silc.width = FW; silc.height = FH;
+  const gs = silc.getContext("2d");
+  gs.fillStyle = "#000"; gs.fillRect(0, 0, FW, FH);
+  headPath(gs, CX, CY, RX, RY);
+  gs.fillStyle = "#fff"; gs.fill();
+
+  // ---- luminance stencil ----
+  const f = document.createElement("canvas");
+  f.width = FW; f.height = FH;
+  const g = f.getContext("2d");
+  g.fillStyle = "#000"; g.fillRect(0, 0, FW, FH);
+
+  // opaque greys + a real clip path. alpha tones over an opaque backing would
+  // scale every value and source-atop would not clip at all.
+  const tone = (v) => { const c = Math.round(v * 255); return "rgb(" + c + "," + c + "," + c + ")"; };
+  const blob = (x, y, rx, ry, v, rot) => {
+    g.beginPath();
+    g.ellipse(x, y, rx, ry, rot || 0, 0, Math.PI * 2);
+    g.fillStyle = tone(v); g.fill();
+  };
+
+  g.save();
+  headPath(g, CX, CY, RX, RY);
+  g.clip();
+
+  // canonical thirds: hairline / brow / nose base / chin
+  const browY = CY - 62, eyeY = CY - 26, eyeDX = 66;
+  const noseY = CY + 62, mouthY = CY + 127, chinY = CY + 182;
+
+  g.fillStyle = tone(0.38); g.fillRect(0, 0, FW, FH);   // base plane
+
+  blob(CX, CY - 95, 92, 52, 0.70);              // forehead
+  blob(CX - 82, CY + 26, 46, 32, 0.74);         // cheekbone L
+  blob(CX + 82, CY + 26, 46, 32, 0.74);         // cheekbone R
+  blob(CX - 96, CY + 92, 36, 34, 0.17);         // cheek hollow L
+  blob(CX + 96, CY + 92, 36, 34, 0.17);         // cheek hollow R
+  blob(CX - 1, CY + 12, 11, 54, 0.96);          // nose ridge
+  blob(CX - 1, noseY, 21, 13, 0.92);            // nose base
+  blob(CX, mouthY - 20, 56, 14, 0.62);          // upper lip shelf
+  blob(CX, chinY, 44, 30, 0.78);                // chin
+
+  blob(CX - eyeDX, eyeY, 42, 25, 0.03);         // eye socket L
+  blob(CX + eyeDX, eyeY, 42, 25, 0.03);         // eye socket R
+  g.lineCap = "round";
+  g.strokeStyle = tone(0.03); g.lineWidth = 15;
+  for (const sx of [-1, 1]) {                   // brows
+    g.beginPath();
+    g.moveTo(CX + sx * 22, browY + 4);
+    g.quadraticCurveTo(CX + sx * 70, browY - 14, CX + sx * 112, browY + 8);
+    g.stroke();
+  }
+  blob(CX - 24, noseY + 4, 11, 8, 0.05);        // nostril L
+  blob(CX + 22, noseY + 4, 11, 8, 0.05);        // nostril R
+  blob(CX, mouthY, 52, 11, 0.05);               // closed mouth
+  blob(CX - 140, CY + 40, 34, 118, 0.11);       // temple/jaw shadow L
+  blob(CX + 140, CY + 40, 34, 118, 0.11);       // temple/jaw shadow R
+  blob(CX, CY - 232, 175, 105, 0.05);           // hairline / crown
+  blob(CX, chinY + 62, 96, 40, 0.08);           // under-jaw shadow
+
+  // irises: two hot points sitting in the dark sockets
+  blob(CX - eyeDX, eyeY + 2, 14, 13, 1.0);
+  blob(CX + eyeDX, eyeY + 2, 14, 13, 1.0);
+
+  g.restore();
+
+  // just enough softening to kill the jaggies, not enough to lose the tones
+  const f2 = document.createElement("canvas");
+  f2.width = FW; f2.height = FH;
+  const g2 = f2.getContext("2d");
+  g2.fillStyle = "#000"; g2.fillRect(0, 0, FW, FH);
+  g2.filter = "blur(2px)";
+  g2.drawImage(f, 0, 0);
+
+  faceSrc = f2;
+  faceSil = silc;
+  MOUTH_Y = mouthY;
+
+  // aim points for the camera, normalized so they survive any face box
+  FEAT = {
+    irisL: [(CX - eyeDX) / FW, (eyeY + 2) / FH],
+    irisR: [(CX + eyeDX) / FW, (eyeY + 2) / FH],
+    nose:  [CX / FW, (CY + 12) / FH],
+    mouth: [CX / FW, mouthY / FH],
+    chin:  [CX / FW, chinY / FH]
+  };
+}
+
+// ---------------------------------------------------------------------------
+// optional: drop any image at assets/face.png and it replaces the procedural
+// face. cropped to content and contrast-normalized, so an arbitrary image
+// lands in the same box at the same tonal range no matter what you feed it.
+// ---------------------------------------------------------------------------
+function bakeFaceFromImage(img) {
+  const long = Math.max(img.naturalWidth, img.naturalHeight);
+  const k = Math.min(1, 900 / long);
+  const w0 = Math.max(1, Math.round(img.naturalWidth * k));
+  const h0 = Math.max(1, Math.round(img.naturalHeight * k));
+
+  const wc = document.createElement("canvas");
+  wc.width = w0; wc.height = h0;
+  const wg = wc.getContext("2d", { willReadFrequently: true });
+  wg.drawImage(img, 0, 0, w0, h0);
+  const px = wg.getImageData(0, 0, w0, h0).data;
+
+  const n = w0 * h0;
+  const lum = new Float32Array(n);
+  const pres = new Float32Array(n);
+  let hasAlpha = false;
+  for (let i = 0; i < n; i++) {
+    const a = px[i * 4 + 3];
+    if (a < 250) hasAlpha = true;
+    lum[i] = (0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]) / 255;
+    pres[i] = a / 255;
+  }
+  // an opaque image has no cutout to follow, so the subject is whatever is
+  // brighter than the backdrop -- works for a portrait on a dark ground
+  if (!hasAlpha) {
+    let lo = 1, hi = 0;
+    for (let i = 0; i < n; i++) { if (lum[i] < lo) lo = lum[i]; if (lum[i] > hi) hi = lum[i]; }
+    const thr = lo + (hi - lo) * 0.30;
+    for (let i = 0; i < n; i++) pres[i] = lum[i] > thr ? 1 : 0;
+  }
+
+  // crop to content
+  let x0 = w0, y0 = h0, x1 = -1, y1 = -1;
+  for (let y = 0; y < h0; y++) {
+    for (let x = 0; x < w0; x++) {
+      if (pres[y * w0 + x] > 0.35) {
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < x0 || y1 < y0) { x0 = 0; y0 = 0; x1 = w0 - 1; y1 = h0 - 1; }
+  const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
+
+  // normalize tone across the content only, 2nd..98th percentile -> 0..1
+  const samp = [];
+  for (let i = 0; i < n; i += 7) if (pres[i] > 0.35) samp.push(lum[i]);
+  samp.sort((a, b) => a - b);
+  const pLo = samp.length ? samp[(samp.length * 0.02) | 0] : 0;
+  const pHi = samp.length ? samp[(samp.length * 0.98) | 0] : 1;
+  const span = Math.max(0.05, pHi - pLo);
+
+  const lc = document.createElement("canvas");
+  lc.width = cw; lc.height = ch;
+  const lg = lc.getContext("2d");
+  const out = lg.createImageData(cw, ch);
+  const sc = document.createElement("canvas");
+  sc.width = cw; sc.height = ch;
+  const sg = sc.getContext("2d");
+  const outS = sg.createImageData(cw, ch);
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
+      const si = (y + y0) * w0 + (x + x0), di = (y * cw + x) * 4;
+      let v = (lum[si] - pLo) / span;
+      v = v < 0 ? 0 : v > 1 ? 1 : v;
+      v = v * v * (3 - 2 * v);                 // gentle S-curve, same lesson as
+      const p = pres[si];                      // the stencil: mush kills it
+      const c = Math.round(v * p * 255);
+      out.data[di] = out.data[di + 1] = out.data[di + 2] = c;
+      out.data[di + 3] = 255;
+      const s = Math.round(p * 255);
+      outS.data[di] = outS.data[di + 1] = outS.data[di + 2] = s;
+      outS.data[di + 3] = 255;
+    }
+  }
+  lg.putImageData(out, 0, 0);
+  sg.putImageData(outS, 0, 0);
+
+  // fit into the same FW x FH box the procedural face uses, so nothing
+  // downstream has to know which one it got
+  const fit = Math.min(FW / cw, FH / ch);
+  const dw = cw * fit, dh = ch * fit;
+  const dx = (FW - dw) / 2, dy = (FH - dh) / 2;
+
+  const mk = (src, blur) => {
+    const c = document.createElement("canvas");
+    c.width = FW; c.height = FH;
+    const g = c.getContext("2d");
+    g.fillStyle = "#000"; g.fillRect(0, 0, FW, FH);
+    g.filter = "blur(" + blur + "px)";
+    g.drawImage(src, dx, dy, dw, dh);
+    return c;
+  };
+  faceSrc = mk(lc, 2);
+  faceSil = mk(sc, 3);
+  MOUTH_Y = FH * 0.46 + 127;   // keep the mouth where the stencil put it
+}
+
+function loadFaceImage() {
+  const img = new Image();
+  img.onload = () => {
+    try {
+      bakeFaceFromImage(img);
+      buildMask();
+      if (IS_SHOT) renderShot();
+    } catch (e) { /* keep the procedural face */ }
+  };
+  img.onerror = () => { /* no asset: the procedural face stands */ };
+  img.src = "assets/face.png";
+}
+
+function sampleToGrid(src, fx, fy, fw, fh) {
+  const m = document.createElement("canvas");
+  m.width = cols; m.height = rows;
+  const g = m.getContext("2d");
+  g.fillStyle = "#000"; g.fillRect(0, 0, cols, rows);
+  g.imageSmoothingEnabled = true;
+  g.drawImage(src, 0, 0, FW, FH, fx / CELL_W, fy / CELL_H, fw / CELL_W, fh / CELL_H);
+  return g.getImageData(0, 0, cols, rows).data;
+}
+
+function buildMask() {
+  // face box on screen, then sampled straight down to the glyph grid
+  const fh = H * 0.80, fw = fh * (FW / FH);
+  const fx = (W - fw) / 2, fy = (H - fh) / 2;
+
+  const pl = sampleToGrid(faceSrc, fx, fy, fw, fh);
+  const ps = sampleToGrid(faceSil, fx, fy, fw, fh);
+  mask = new Float32Array(cols * rows);
+  sil = new Float32Array(cols * rows);
+  for (let i = 0; i < cols * rows; i++) {
+    mask[i] = pl[i * 4] / 255;
+    sil[i] = ps[i * 4] / 255;
+  }
+
+  faceBox = { x: fx, y: fy, w: fw, h: fh };
+
+  fc0 = Math.max(0, Math.floor(fx / CELL_W) - 1);
+  fc1 = Math.min(cols - 1, Math.ceil((fx + fw) / CELL_W) + 1);
+  fr0 = Math.max(0, Math.floor(fy / CELL_H) - 1);
+  fr1 = Math.min(rows - 1, Math.ceil((fy + fh) / CELL_H) + 1);
+
+  // mouth, in grid units, tracking the baked geometry
+  mouthC = (fx + fw * 0.5) / CELL_W;
+  mouthR = (fy + fh * (MOUTH_Y / FH)) / CELL_H;
+  mouthRX = (fw * (52 / FW)) / CELL_W;
+  mouthRY = (fh * (11 / FH)) / CELL_H;
+}
+
+// ---------------------------------------------------------------------------
+// rain
+// ---------------------------------------------------------------------------
+let columns = [];
+let glyphGrid = null;   // rain glyph per cell
+let faceGrid = null;    // face glyph per cell (mutates slower)
+
+function rollColumn(c) {
+  c.speed = 5 + rnd() * 12;          // rows/sec at full motion
+  c.len   = 7 + rnd() * 16;
+  c.thr   = rnd() * 0.72;            // density threshold -> smooth fade in/out
+  c.thr2  = 0.62 + rnd() * 0.42;     // second drop, only at high energy
+  c.off   = 0.34 + rnd() * 0.42;     // its offset, as a fraction of the field
+  c.rev   = rnd() < 0.45;            // reverses on listening
+}
+
+function buildGrid() {
+  cols = Math.ceil(W / CELL_W);
+  rows = Math.ceil(H / CELL_H);
+  columns = new Array(cols);
+  for (let i = 0; i < cols; i++) {
+    const c = { y: 0, speed: 0, len: 0, thr: 0, thr2: 0, off: 0, rev: false };
+    rollColumn(c);
+    c.y = rnd() * (rows + 40) - 20;
+    columns[i] = c;
+  }
+  glyphGrid = new Uint8Array(cols * rows);
+  faceGrid  = new Uint8Array(cols * rows);
+  for (let i = 0; i < cols * rows; i++) {
+    glyphGrid[i] = (rnd() * GLYPHS.length) | 0;
+    faceGrid[i]  = (rnd() * GLYPHS.length) | 0;
+  }
+  buildMask();
+}
+
+// ---------------------------------------------------------------------------
+// bus state + easing
+// ---------------------------------------------------------------------------
+let busState = "idle", busLevel = 0, busAlert = false;
+let lastGood = -1e9;
+
+const w = { idle: 1, listening: 0, thinking: 0, speaking: 0 };
+let wAlert = 0;
+let level = 0, energy = 0.2, glowE = 0.16, motionE = 0.18;
+let T = 0;                 // scene clock (seconds)
+let fps = 0, fpsOn = false, fpsAcc = 0, fpsN = 0;
+let hudState = "idle", hudAlert = false;   // what the scene believes right now
+
+function ease(cur, tgt, dt, tauUp, tauDn) {
+  const tau = tgt > cur ? tauUp : tauDn;
+  return cur + (tgt - cur) * (1 - Math.exp(-dt / tau));
+}
+
+// mirrors MOCK_SCRIPT in server.py, so ?shot=loop / ?mockstate=loop walks the
+// same cycle locally without a server. returns [state, alert, timeInStep]
+const LOOP = [
+  ["idle", 6], ["listening", 5], ["thinking", 5], ["speaking", 10],
+  ["idle", 3], ["alert", 5], ["idle", 4]
+];
+const LOOP_LEN = LOOP.reduce((a, s) => a + s[1], 0);
+
+function loopAt(t) {
+  let u = t % LOOP_LEN, acc = 0;
+  for (const [name, dur] of LOOP) {
+    if (u < acc + dur) {
+      return name === "alert" ? ["idle", true, u - acc] : [name, false, u - acc];
+    }
+    acc += dur;
+  }
+  return ["idle", false, 0];
+}
+
+// synthetic breathing voice for ?mockstate=speaking and ?shot=speaking
+function synthLevel(t) {
+  const breath = 0.55 + 0.45 * Math.sin(t * 0.9);
+  const syll = Math.pow(Math.abs(Math.sin(t * 5.5)), 1.6);
+  const gap = (t % 3.4) < 2.7 ? 1 : 0.08;
+  return Math.max(0, Math.min(1, breath * syll * gap));
+}
+
+function updateState(dt) {
+  let st = busState, lv = busLevel, al = busAlert;
+
+  if (LOCAL_SIM) {
+    const m = SHOT_STATE || MOCK_STATE || (IS_FLYSHOT ? FLY_SCENE : "loop");
+    if (m === "loop") {
+      const p = loopAt(T);
+      st = p[0]; al = p[1];
+      lv = (st === "speaking") ? synthLevel(p[2]) : 0;
+    } else {
+      al = (m === "alert");
+      st = al ? "idle" : m;
+      lv = (st === "speaking") ? synthLevel(T) : 0;
+    }
+  } else if (T - lastGood > STALE_SEC) {
+    // server went away or stopped answering -> the scene walks itself home
+    st = "idle"; lv = 0; al = false;
+  }
+
+  hudState = st; hudAlert = al;
+
+  for (const k in w) w[k] = ease(w[k], st === k ? 1 : 0, dt, 0.22, 0.45);
+  wAlert = ease(wAlert, al ? 1 : 0, dt, 0.14, 0.55);
+  level = ease(level, lv, dt, LEVEL_TAU, LEVEL_TAU);
+
+  const s = w.idle + w.listening + w.thinking + w.speaking || 1;
+  // one continuously eased energy; glow and motion are two axes off the same curve
+  energy = (0.20 * w.idle + 0.50 * w.listening + 1.00 * w.thinking + 0.78 * w.speaking) / s;
+  glowE  = (0.16 * w.idle + 0.55 * w.listening + 0.86 * w.thinking +
+            (0.82 + 0.18 * level) * w.speaking) / s;
+  motionE = (0.18 * w.idle + 0.34 * w.listening + 1.00 * w.thinking + 0.44 * w.speaking) / s;
+
+  energy  += (1 - energy)  * wAlert * 0.85;
+  glowE   += (1 - glowE)   * wAlert * 0.90;
+  motionE += (1 - motionE) * wAlert * 0.80;
+}
+
+function tint() {
+  const s = w.idle + w.listening + w.thinking + w.speaking || 1;
+  const o = [0, 0, 0];
+  for (let i = 0; i < 3; i++) {
+    o[i] = (PAL.idle[i] * w.idle + PAL.listening[i] * w.listening +
+            PAL.thinking[i] * w.thinking + PAL.speaking[i] * w.speaking) / s;
+    o[i] = o[i] + (PAL.alert[i] - o[i]) * wAlert;
+  }
+  return "rgb(" + (o[0] | 0) + "," + (o[1] | 0) + "," + (o[2] | 0) + ")";
+}
+
+// ---------------------------------------------------------------------------
+// simulation
+// ---------------------------------------------------------------------------
+function step(dt) {
+  T += dt;
+  updateState(dt);
+
+  const spd = 0.35 + 1.95 * motionE;
+  const lenK = 0.6 + 0.7 * energy;
+
+  for (let i = 0; i < cols; i++) {
+    const c = columns[i];
+    // listening flips a stable subset of columns: velocity eases through zero,
+    // so the reversal is a turn, never a jump cut
+    const flip = c.rev ? (1 - 2 * w.listening) : 1;
+    const vel = c.speed * spd * flip;
+    c.y += vel * dt;
+    const L = c.len * lenK;
+    if (vel > 0 && c.y - L > rows + 2) { c.y = -L - rnd() * 12; rollColumn(c); }
+    else if (vel < 0 && c.y + L < -2) { c.y = rows + L + rnd() * 12; rollColumn(c); }
+  }
+
+  // glyph churn scales with energy
+  const n = (glyphGrid.length * (0.004 + 0.030 * energy)) | 0;
+  for (let k = 0; k < n; k++) {
+    glyphGrid[(rnd() * glyphGrid.length) | 0] = (rnd() * GLYPHS.length) | 0;
+  }
+  const fn = (faceGrid.length * (0.002 + 0.020 * level * w.speaking)) | 0;
+  for (let k = 0; k < fn; k++) {
+    faceGrid[(rnd() * faceGrid.length) | 0] = (rnd() * GLYPHS.length) | 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// render
+// ---------------------------------------------------------------------------
+const heads = [];
+const faceHot = [];
+
+// visible grid window. Full field normally; narrowed to what the lens sees
+// during a flythrough, which is what makes a deep push cheap.
+let VIS = { c0: 0, c1: 0, r0: 0, r1: 0 };
+function visAll() { VIS.c0 = 0; VIS.c1 = cols - 1; VIS.r0 = 0; VIS.r1 = rows - 1; }
+
+function drawRain() {
+  heads.length = 0;
+  // speaking thins the field back out so the face has room to own the frame
+  const densityE = Math.min(1, 0.42 + 0.70 * energy) * (1 - 0.34 * w.speaking);
+  const lenK = 0.6 + 0.7 * energy;
+  const fall = 1.6 - 0.55 * energy;   // trails hold together as the field speeds up
+  // while the voice is up the surrounding code recedes, so the face burns through
+  const gk = (0.58 + 0.42 * glowE) * (1 - 0.52 * w.speaking * (0.35 + 0.65 * level));
+  // the rain is pushed out of the head silhouette entirely, so the face owns
+  // that space. level-independent, so the silhouette never flickers on syllables
+  const carveAmt = w.speaking * 0.97;
+  const carve = carveAmt > 0.02;
+
+  for (let i = VIS.c0; i <= VIS.c1; i++) {
+    const c = columns[i];
+    const flip = c.rev ? (1 - 2 * w.listening) : 1;
+    const sgn = (c.speed * flip) >= 0 ? 1 : -1;
+    const L = Math.max(3, c.len * lenK) | 0;
+    const px = i * CELL_W;
+
+    // pass 0 is the column's own drop; pass 1 is a trailing second drop with a
+    // higher visibility threshold, so the field thickens into a downpour as
+    // energy climbs without ever popping a whole column in
+    for (let pass = 0; pass < 2; pass++) {
+      const thr = pass ? c.thr2 : c.thr;
+      let vis = (densityE - (thr - 0.16)) / 0.32;
+      if (vis <= 0) continue;
+      if (vis > 1) vis = 1;
+
+      let hy = Math.round(c.y - pass * c.off * rows * sgn);
+      if (pass) {
+        hy = ((hy % rows) + rows) % rows;   // wrap the ghost drop into the field
+      }
+
+      for (let d = 0; d <= L; d++) {
+        const r = hy - d * sgn;
+        if (r < VIS.r0 || r > VIS.r1) continue;
+        const f = 1 - d / L;
+        let b = d === 0 ? 1 : Math.pow(f, fall) * 0.92;
+        b *= vis * gk;
+        if (carve && i >= fc0 && i <= fc1 && r >= fr0 && r <= fr1) {
+          b *= 1 - sil[r * cols + i] * carveAmt;
+        }
+        const tier = (b * TIERS) | 0;
+        if (tier < 2) continue;
+        blit(glyphGrid[r * cols + i], tier > TIERS - 1 ? TIERS - 1 : tier, px, r * CELL_H);
+        if (d === 0 && b > 0.45) heads.push(px, r * CELL_H, glyphGrid[r * cols + i]);
+      }
+    }
+  }
+}
+
+function drawFace() {
+  faceHot.length = 0;
+  const amt = w.speaking * (0.55 + 0.45 * level);
+  if (amt < 0.015) return;
+
+  // jaw opens with the voice
+  const openRY = mouthRY * (1.0 + 7.0 * level);
+
+  ctx.globalCompositeOperation = "lighter";
+  const r0 = Math.max(fr0, VIS.r0), r1 = Math.min(fr1, VIS.r1);
+  const i0 = Math.max(fc0, VIS.c0), i1 = Math.min(fc1, VIS.c1);
+  for (let r = r0; r <= r1; r++) {
+    const dy = (r - mouthR) / openRY;
+    for (let i = i0; i <= i1; i++) {
+      const idx = r * cols + i;
+      const m = mask[idx];
+      if (m < 0.10) continue;
+      let b = amt * (0.35 + 1.10 * m);
+
+      const dx = (i - mouthC) / mouthRX;
+      const q = dx * dx + dy * dy;
+      if (q < 1) b *= 0.05;                        // open cavity: rain shows through
+      else if (q < 1.9) b *= 1 + 0.85 * (1.9 - q); // lit rim around the mouth
+
+      const tier = (b * TIERS) | 0;
+      if (tier < 2) continue;
+      blit(faceGrid[idx], tier > TIERS - 1 ? TIERS - 1 : tier, i * CELL_W, r * CELL_H);
+      if (b > 0.86) faceHot.push(i * CELL_W, r * CELL_H, faceGrid[idx]);
+    }
+  }
+  ctx.globalCompositeOperation = "source-over";
+}
+
+function drawDecrypt() {
+  // thinking: a scan bar that scrambles the code and resolves it behind itself
+  const a = w.thinking;
+  if (a < 0.02) return;
+  const span = rows + 10;
+  const bandR = ((T * 0.55) % 1) * span - 5;
+  const half = 2.6;
+
+  ctx.globalCompositeOperation = "lighter";
+  for (let r = Math.floor(bandR - half); r <= Math.ceil(bandR + half); r++) {
+    if (r < VIS.r0 || r > VIS.r1) continue;
+    const k = 1 - Math.abs(r - bandR) / half;
+    if (k <= 0) continue;
+    const b = k * a * 0.95;
+    const tier = (b * TIERS) | 0;
+    if (tier < 1) continue;
+    for (let i = VIS.c0; i <= VIS.c1; i++) {
+      const gi = ((i * 31 + r * 17 + ((T * 90) | 0)) % GLYPHS.length + GLYPHS.length) % GLYPHS.length;
+      blit(gi, tier > TIERS - 1 ? TIERS - 1 : tier, i * CELL_W, r * CELL_H);
+    }
+  }
+  ctx.globalCompositeOperation = "source-over";
+  return bandR;
+}
+
+// world space: glued to the band's row, so the camera carries it
+function overlayBand(bandR) {
+  if (w.thinking <= 0.02 || bandR == null) return;
+  ctx.globalCompositeOperation = "lighter";
+  const y = bandR * CELL_H;
+  const g = ctx.createLinearGradient(0, y - 26, 0, y + 26);
+  g.addColorStop(0, "rgba(160,255,180,0)");
+  g.addColorStop(0.5, "rgba(190,255,205," + (0.30 * w.thinking).toFixed(3) + ")");
+  g.addColorStop(1, "rgba(160,255,180,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, y - 26, W, 52);
+  ctx.globalCompositeOperation = "source-over";
+}
+
+// screen space: these are lens and room effects, they must not ride the camera
+function overlayLines() {
+  ctx.globalCompositeOperation = "lighter";
+
+  // listening: a soft line sweeping UPWARD -- inbound, not output
+  if (w.listening > 0.02) {
+    const y = H - ((T * 0.32) % 1) * (H + 200) + 100;
+    const g = ctx.createLinearGradient(0, y - 90, 0, y + 40);
+    g.addColorStop(0, "rgba(0,255,200,0)");
+    g.addColorStop(0.7, "rgba(0,255,200," + (0.24 * w.listening).toFixed(3) + ")");
+    g.addColorStop(1, "rgba(0,255,200,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y - 90, W, 130);
+  }
+
+  // speaking: bloom bleeding off the face
+  const fa = w.speaking * (0.25 + 0.75 * level);
+  if (fa > 0.02) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.05, W / 2, H / 2, H * 0.55);
+    g.addColorStop(0, "rgba(150,255,180," + (0.13 * fa).toFixed(3) + ")");
+    g.addColorStop(1, "rgba(150,255,180,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  ctx.globalCompositeOperation = "source-over";
+}
+
+function drawAlert() {
+  if (wAlert < 0.02) return;
+  const pulse = 0.55 + 0.45 * Math.sin(T * 7.2);
+
+  // horizontal tears: slice the frame and shove it sideways
+  const nTear = Math.round(wAlert * 6);
+  for (let k = 0; k < nTear; k++) {
+    const seedy = Math.sin((T * 3.1 + k * 12.9) * 43.7);
+    const sy = Math.abs(seedy * 977) % H;
+    const sh = 8 + (Math.abs(seedy * 311) % 46);
+    const off = (((Math.abs(seedy * 733) % 90) - 45) * wAlert) | 0;
+    if (sh < 2) continue;
+    ctx.drawImage(cv, 0, sy * DPR, cv.width, sh * DPR, off, sy, W, sh);
+  }
+
+  // red bleed: a wash over the whole field, hottest at the edges
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = "rgba(150,8,4," + (0.30 * wAlert * pulse).toFixed(3) + ")";
+  ctx.fillRect(0, 0, W, H);
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.10, W / 2, H / 2, H * 0.88);
+  g.addColorStop(0, "rgba(255,0,0,0)");
+  g.addColorStop(0.55, "rgba(255,20,10," + (0.22 * wAlert * pulse).toFixed(3) + ")");
+  g.addColorStop(1, "rgba(255,26,12," + (0.95 * wAlert * pulse).toFixed(3) + ")");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // warning flare: two hot bars top and bottom, breathing with the pulse
+  const bar = ctx.createLinearGradient(0, 0, 0, H * 0.14);
+  bar.addColorStop(0, "rgba(255,40,20," + (0.5 * wAlert * pulse).toFixed(3) + ")");
+  bar.addColorStop(1, "rgba(255,40,20,0)");
+  ctx.fillStyle = bar; ctx.fillRect(0, 0, W, H * 0.14);
+  ctx.save();
+  ctx.translate(0, H); ctx.scale(1, -1);
+  ctx.fillStyle = bar; ctx.fillRect(0, 0, W, H * 0.14);
+  ctx.restore();
+  ctx.globalCompositeOperation = "source-over";
+}
+
+function drawHUD() {
+  const st = hudState, al = hudAlert;
+  ctx.font = '11px Menlo,monospace';
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.fillStyle = al ? "rgba(255,90,70,0.85)" : "rgba(0,255,70,0.45)";
+  const tag = st.toUpperCase() + (al ? "  ● ALERT" : "");
+  ctx.fillText(tag, 14, H - 14);
+  if (T - lastGood > STALE_SEC && !LOCAL_SIM) {
+    ctx.fillStyle = "rgba(0,255,70,0.22)";
+    ctx.fillText("no signal", 14, H - 28);
+  }
+  if (fpsOn) {
+    ctx.textAlign = "right";
+    ctx.fillStyle = "rgba(0,255,70,0.5)";
+    ctx.fillText(fps.toFixed(0) + " fps", W - 14, 22);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// cinematic camera -- Space deals a ~30s flythrough OVER the live sim
+// ---------------------------------------------------------------------------
+// Shot grammar, and why each rule is here:
+//  - constant-speed drift inside every shot, cuts land mid-motion. Per-shot
+//    ease-in/out reads as the camera pausing at every cut, which kills it.
+//  - the finale's ease-in is the ONLY deceleration in the whole run.
+//  - one apparent speed across the deck: travel distance is DERIVED from the
+//    shot's duration and zoom, so nothing ever visibly sprints.
+//  - the tilt is present from the first frame and flattens only with the final
+//    pull-back. Easing it in after a cut reads as the world warping.
+const SHOT_KINDS = {
+  column:   { z: [2.2, 3.2], dir: "vert"  },   // dive with a falling column
+  field:    { z: [1.4, 2.0], dir: "horiz" },   // long lateral glide
+  diagonal: { z: [1.4, 1.9], dir: "diag"  },
+  corner:   { z: [1.6, 2.2], dir: "diag"  },
+  edge:     { z: [1.8, 2.6], dir: "vert"  },   // thin margin, vignette biting
+  band:     { z: [1.8, 2.6], dir: "horiz" },   // chase the decrypt scan bar
+  irisL:    { z: [2.6, FLY_ZOOM_MAX], dir: "push" },
+  irisR:    { z: [2.6, FLY_ZOOM_MAX], dir: "push" },
+  nose:     { z: [2.2, 3.4], dir: "push" },
+  mouth:    { z: [2.4, 3.8], dir: "push" },
+  chin:     { z: [2.2, 3.2], dir: "push" }
+};
+
+let flyRun = null;
+let autoflyPending = !!Q.get("autofly") && !IS_SHOT;
+// ?autofly=loop -- re-deal after each landing. A single 30s run is easy to miss
+// if you look away; a looping one is a demo you cannot miss.
+const AUTOFLY_LOOP = Q.get("autofly") === "loop";
+const AUTOFLY_GAP_S = 3;
+let autoflyGap = 0;
+const BEACON = !!Q.get("beacon");
+let beaconN = 0;
+const flyLog = [];   // every shot dealt this run, for ?flyplan=1
+
+// Face shots are dealt ONLY while the face is actually on screen. w.speaking
+// gates the face entirely, so a face push dealt during idle is dead air.
+// Dealing lazily, one shot ahead, is what keeps this true 25 seconds in.
+function flyPool() {
+  const p = ["column", "field", "diagonal", "corner", "edge"];
+  if (w.thinking > 0.30) p.push("band");
+  if (w.speaking > FLY_FACE_GATE) p.push("irisL", "irisR", "nose", "mouth", "chin");
+  return p;
+}
+
+function subjectPoint(name) {
+  if (FEAT[name]) {
+    return [faceBox.x + FEAT[name][0] * faceBox.w,
+            faceBox.y + FEAT[name][1] * faceBox.h];
+  }
+  switch (name) {
+    case "column": {
+      const i = (rnd() * cols) | 0;
+      const c = columns[i];
+      const y = Math.max(H * 0.15, Math.min(H * 0.85, c.y * CELL_H));
+      return [i * CELL_W + CELL_W / 2, y];
+    }
+    case "band": {
+      const bandR = ((T * 0.55) % 1) * (rows + 10) - 5;
+      return [(0.25 + 0.5 * rnd()) * W, bandR * CELL_H];
+    }
+    case "edge":
+      return [rnd() < 0.5 ? W * 0.06 : W * 0.94, (0.3 + 0.4 * rnd()) * H];
+    case "corner":
+      return [rnd() < 0.5 ? W * 0.16 : W * 0.84,
+              rnd() < 0.5 ? H * 0.18 : H * 0.82];
+    default:
+      return [(0.25 + 0.5 * rnd()) * W, (0.25 + 0.5 * rnd()) * H];
+  }
+}
+
+function dirVec(kind) {
+  const s = rnd() < 0.5 ? -1 : 1;
+  if (kind === "vert")  return [0, s];
+  if (kind === "horiz") return [s, 0];
+  const t = rnd() < 0.5 ? -1 : 1;
+  return [s * 0.7071, t * 0.7071];
+}
+
+// keep the frame on the field: past the edge is just black
+function clampCenter(x, y, z) {
+  const hw = W / (2 * z), hh = H / (2 * z);
+  const cx = hw >= W / 2 ? W / 2 : Math.max(hw, Math.min(W - hw, x));
+  const cy = hh >= H / 2 ? H / 2 : Math.max(hh, Math.min(H - hh, y));
+  return [cx, cy];
+}
+
+// how far a center can travel along d before the frame leaves the field
+function rayLimit(ax, ay, dx, dy, z) {
+  const hw = W / (2 * z), hh = H / (2 * z);
+  const loX = hw >= W / 2 ? W / 2 : hw, hiX = hw >= W / 2 ? W / 2 : W - hw;
+  const loY = hh >= H / 2 ? H / 2 : hh, hiY = hh >= H / 2 ? H / 2 : H - hh;
+  let t = Infinity;
+  if (dx > 1e-6)  t = Math.min(t, (hiX - ax) / dx);
+  if (dx < -1e-6) t = Math.min(t, (loX - ax) / dx);
+  if (dy > 1e-6)  t = Math.min(t, (hiY - ay) / dy);
+  if (dy < -1e-6) t = Math.min(t, (loY - ay) / dy);
+  return Math.max(0, t === Infinity ? 0 : t);
+}
+
+// CRITICAL: duration is derived from the travel that SURVIVES clipping, never
+// from the travel we wanted. Clamping the two endpoints independently and
+// keeping the intended duration is what made some shots crawl at 35px/s while
+// others ran at 174 -- one apparent speed is the whole point of the grammar.
+function makeShot(name, budget) {
+  const spec = SHOT_KINDS[name] || SHOT_KINDS.field;
+  const pt = subjectPoint(name);
+  let z0, z1;
+  if (spec.dir === "push") { z0 = spec.z[0]; z1 = spec.z[1]; }
+  else { z0 = z1 = spec.z[0] + rnd() * (spec.z[1] - spec.z[0]); }
+
+  const zoomWork = Math.abs(Math.log(z1 / z0)) / FLY_ZOOM_RATE;
+  const zMid = Math.sqrt(z0 * z1);
+  const want = FLY_DUR_MIN + rnd() * (FLY_DUR_MAX - FLY_DUR_MIN);
+  const wantLen = (Math.max(0.2, want - zoomWork) * FLY_SPEED_PX / zMid) *
+                  (spec.dir === "push" ? 0.28 : 1);
+
+  // travel the run still has time to pay for, and the least travel worth cutting to
+  const maxLen = Math.max(0, budget - zoomWork) * FLY_SPEED_PX / zMid;
+  const minLen = Math.max(0, FLY_DUR_MIN - zoomWork) * FLY_SPEED_PX / zMid;
+
+  // Fit the segment using the room on BOTH sides of the subject, and drop the
+  // zoom if even that is too tight. Pinning the start to the wall and clipping
+  // forward is what produced a 0 px/s shot -- a camera sitting still, which the
+  // grammar forbids outright.
+  // CRITICAL: room GROWS with zoom. The travel box is W-W/z by H-H/z, so
+  // zooming OUT for room is exactly backwards -- a wider lens leaves the center
+  // less room to move. Vertical shots need roughly z >= 1 + 492/H to move at
+  // all, which is why tight shots step the zoom UP.
+  let best = null;
+  for (let attempt = 0; attempt < 4 && !best; attempt++) {
+    const zk = Math.min(Math.pow(1.3, attempt), FLY_ZOOM_MAX / Math.max(z0, z1));
+    const za = z0 * zk, zb = z1 * zk;
+    const zc = Math.max(za, zb);
+    const need = Math.max(0, FLY_DUR_MIN - zoomWork) * FLY_SPEED_PX / Math.sqrt(za * zb);
+    const p = clampCenter(pt[0], pt[1], zc);
+    for (let k = 0; k < 5; k++) {
+      const d = dirVec(spec.dir === "push" ? (rnd() < 0.5 ? "horiz" : "diag") : spec.dir);
+      const tf = rayLimit(p[0], p[1], d[0], d[1], zc);
+      const tb = rayLimit(p[0], p[1], -d[0], -d[1], zc);
+      const L = Math.min(wantLen, maxLen, tf + tb);
+      if (L < Math.min(need, maxLen) * 0.98) continue;
+      const fwd = Math.min(tf, L / 2 + Math.max(0, L / 2 - tb));
+      const back = L - fwd;
+      best = { d: d, ax: p[0] - d[0] * back, ay: p[1] - d[1] * back,
+               L: L, z0: za, z1: zb };
+      break;
+    }
+  }
+
+  // last resort: a horizontal glide across the middle always has room, and a
+  // dull shot beats a camera that stops dead
+  if (!best) {
+    // size the travel from THIS shot's zoom, not the abandoned one. Reusing the
+    // original cap here is what produced 1.2s flickers inside a 205px/s deck.
+    const z = 2.0;
+    const want2 = Math.min(budget, FLY_DUR_MIN + rnd() * (FLY_DUR_MAX - FLY_DUR_MIN));
+    const L2 = Math.min(want2 * FLY_SPEED_PX / z, W - W / z);
+    const d = [rnd() < 0.5 ? -1 : 1, 0];
+    best = { d: d, ax: W / 2 - d[0] * L2 / 2, ay: H / 2, L: L2, z0: z, z1: z };
+  }
+
+  // CRITICAL: recompute the zoom time from the zooms we actually ended up with.
+  // The fallback can turn a push into a flat glide, and charging the shot for a
+  // zoom it no longer performs stretched its duration past its travel -- a
+  // 172px/s shot in a 205px/s deck.
+  const zm = Math.sqrt(best.z0 * best.z1);
+  const zw = Math.abs(Math.log(best.z1 / best.z0)) / FLY_ZOOM_RATE;
+  let L = best.L;
+  let dur = L * zm / FLY_SPEED_PX + zw;
+  if (dur > budget) {                       // trim travel, never stretch time
+    L = Math.max(0, budget - zw) * FLY_SPEED_PX / zm;
+    dur = L * zm / FLY_SPEED_PX + zw;
+  }
+
+  return { subject: name, x0: best.ax, y0: best.ay, z0: best.z0,
+           x1: best.ax + best.d[0] * L, y1: best.ay + best.d[1] * L, z1: best.z1,
+           dur: dur, finale: false };
+}
+
+function dealShot(prev, budget) {
+  const pool = flyPool().filter((n) => n !== prev);   // never cut A -> A
+  const name = pool[(rnd() * pool.length) | 0];
+  return makeShot(name, Math.min(FLY_DUR_MAX, budget));
+}
+
+// the landing: pull back to the full wide scene, easing in, un-tilting in the
+// same motion. Its starting subject may not repeat the shot before it.
+function dealFinale(prev, left) {
+  const pool = flyPool().filter((n) => n !== prev);
+  const name = pool[(rnd() * pool.length) | 0];
+  const pt = subjectPoint(name);
+  const z0 = 2.0 + rnd() * 0.8;
+  const a = clampCenter(pt[0], pt[1], z0);
+  // absorb whatever is left of the 30s so the run lands on time
+  const dur = Math.max(FLY_FINALE_DUR, Math.min(left || 0, FLY_FINALE_DUR + 2.2));
+  return { subject: name, x0: a[0], y0: a[1], z0: z0,
+           x1: W / 2, y1: H / 2, z1: 1, dur: dur, finale: true };
+}
+
+function camAt() {
+  const s = flyRun.cur;
+  let p = s.dur > 0 ? flyRun.shotT / s.dur : 1;
+  if (p > 1) p = 1;
+  if (s.finale) p = 1 - Math.pow(1 - p, 3);   // the only deceleration in the run
+  return {
+    cx: s.x0 + (s.x1 - s.x0) * p,
+    cy: s.y0 + (s.y1 - s.y0) * p,
+    z: Math.exp(Math.log(s.z0) + (Math.log(s.z1) - Math.log(s.z0)) * p),
+    tiltK: s.finale ? 1 - p : 1
+  };
+}
+
+function camMat(c) {
+  return { shear: FLY_TILT_SHEAR * c.tiltK,
+           squash: 1 - (1 - FLY_TILT_SQUASH) * c.tiltK };
+}
+
+function applyCam(c) {
+  const m = camMat(c);
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.transform(1, 0, m.shear, m.squash, 0, 0);
+  ctx.scale(c.z, c.z);
+  ctx.translate(-c.cx, -c.cy);
+}
+
+// inverse-map the screen corners to decide which cells can possibly be seen
+function camVis(c) {
+  const m = camMat(c);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const pts = [[0, 0], [W, 0], [0, H], [W, H]];
+  for (const p of pts) {
+    const v = (p[1] - H / 2) / m.squash;
+    const u = p[0] - W / 2 - m.shear * v;
+    const x = c.cx + u / c.z, y = c.cy + v / c.z;
+    if (x < x0) x0 = x; if (x > x1) x1 = x;
+    if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  const cl = (v, hi) => Math.max(0, Math.min(hi, v));
+  VIS.c0 = cl(Math.floor(x0 / CELL_W) - 2, cols - 1);
+  VIS.c1 = cl(Math.ceil(x1 / CELL_W) + 2, cols - 1);
+  VIS.r0 = cl(Math.floor(y0 / CELL_H) - 2, rows - 1);
+  VIS.r1 = cl(Math.ceil(y1 / CELL_H) + 2, rows - 1);
+}
+
+function flyNext() {
+  // if what is left before the finale cannot pay for a real shot, land now --
+  // otherwise the deck ends on a half-second scrap that reads as a glitch
+  const left = FLY_TARGET_S - flyRun.t;
+  flyRun.cur = (left - FLY_FINALE_DUR < FLY_DUR_MIN)
+    ? dealFinale(flyRun.prev, left)
+    : dealShot(flyRun.prev, left - FLY_FINALE_DUR);
+  flyRun.prev = flyRun.cur.subject;
+  flyRun.shotT = 0;
+  const s = flyRun.cur;
+  flyLog.push({
+    subject: s.subject, dur: +s.dur.toFixed(2), finale: s.finale,
+    z0: +s.z0.toFixed(2), z1: +s.z1.toFixed(2),
+    // screen px/sec: the number that must match across the whole deck
+    speed: +((Math.hypot(s.x1 - s.x0, s.y1 - s.y0) * Math.sqrt(s.z0 * s.z1)) /
+             Math.max(0.2, s.dur - Math.abs(Math.log(s.z1 / s.z0)) / FLY_ZOOM_RATE)).toFixed(1)
+  });
+}
+
+function flyStart() {
+  flyLog.length = 0;
+  // make sure every depth is baked before anything moves; a mid-run bake would
+  // hitch the camera
+  for (const s of ATLAS_STEPS) {
+    if (!atlasCache.has(s)) atlasCache.set(s, bakeAtlasAt(s));
+  }
+  flyRun = { t: 0, shotT: 0, cur: null, prev: null };
+  flyNext();
+}
+
+function flyStop() {
+  flyRun = null;
+  visAll();
+  useAtlas(1);
+}
+
+function flyStep(dt) {
+  if (!flyRun) return;
+  flyRun.t += dt;
+  flyRun.shotT += dt;
+  if (flyRun.shotT >= flyRun.cur.dur) {
+    if (flyRun.cur.finale) { flyStop(); return; }
+    const over = flyRun.shotT - flyRun.cur.dur;
+    flyNext();
+    flyRun.shotT = over;      // carry the overshoot so cuts land mid-motion
+  }
+}
+
+// ---------------------------------------------------------------------------
+// boot intro
+// ---------------------------------------------------------------------------
+let introT = 0, introDone = IS_SHOT;
+const INTRO_LINES = [
+  { t: 0.25, s: "wake up..." },
+  { t: 1.35, s: "the matrix has you" },
+  { t: 2.35, s: "follow the white rabbit." }
+];
+
+function drawIntro() {
+  const t = introT;
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  const fade = t > 3.0 ? Math.max(0, 1 - (t - 3.0) / 0.9) : 1;
+  ctx.font = '600 ' + Math.max(16, Math.min(30, W / 46)) + 'px Menlo,monospace';
+  ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  ctx.shadowColor = "rgba(0,255,65,0.55)"; ctx.shadowBlur = 12;
+  const x = Math.max(28, W * 0.12);
+  let y = H * 0.42;
+  for (const ln of INTRO_LINES) {
+    if (t < ln.t) break;
+    const n = Math.min(ln.s.length, Math.floor((t - ln.t) * 22));
+    ctx.fillStyle = "rgba(0,255,65," + (0.92 * fade).toFixed(3) + ")";
+    ctx.fillText(ln.s.slice(0, n), x, y);
+    if (n < ln.s.length) {
+      if (((t * 3) | 0) % 2 === 0) {
+        ctx.fillRect(x + ctx.measureText(ln.s.slice(0, n)).width + 3, y - 16, 11, 20);
+      }
+      break;
+    }
+    y += Math.max(26, Math.min(46, W / 30));
+  }
+  ctx.shadowBlur = 0;
+  return fade;
+}
+
+// ---------------------------------------------------------------------------
+// frame
+// ---------------------------------------------------------------------------
+// ?facemask=1 -- dev view of the sampled stencil, one gray block per glyph cell
+function drawMaskDebug() {
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  for (let r = fr0; r <= fr1; r++) {
+    for (let i = fc0; i <= fc1; i++) {
+      const v = mask[r * cols + i];
+      if (v <= 0.01) continue;
+      ctx.fillStyle = "rgb(" + ((v * 255) | 0) + "," + ((v * 255) | 0) + "," + ((v * 255) | 0) + ")";
+      ctx.fillRect(i * CELL_W, r * CELL_H, CELL_W - 1, CELL_H - 1);
+    }
+  }
+}
+
+function renderScene(rainAlpha) {
+  if (Q.get("facemask")) { drawMaskDebug(); return; }
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+
+  // The world is re-rendered THROUGH the camera every frame and culled to the
+  // frame -- never a prebaked image scaled up. That is what keeps a 4x push
+  // crisp, and cheap: at depth there are only a few hundred live cells.
+  const cam = flyRun ? camAt() : null;
+  if (cam) { camVis(cam); useAtlas(atlasStepFor(cam.z)); }
+  else { visAll(); if (atlasQ !== 1) useAtlas(1); }
+
+  if (cam) applyCam(cam);
+  if (rainAlpha < 1) ctx.globalAlpha = rainAlpha;
+  drawRain();
+  drawFace();
+  const bandR = drawDecrypt();
+  overlayBand(bandR);
+  ctx.globalAlpha = 1;
+  if (cam) ctx.restore();
+
+  // one full-screen multiply tints the whole grayscale field
+  ctx.globalCompositeOperation = "multiply";
+  ctx.fillStyle = tint();
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = "source-over";
+
+  // blow the leading glyphs -- and the lit planes of the face -- back to white-hot.
+  // Back under the camera: these are world positions, not screen positions.
+  if (cam) applyCam(cam);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.55 * rainAlpha;
+  for (let k = 0; k < heads.length; k += 3) blit(heads[k + 2], TIERS - 1, heads[k], heads[k + 1]);
+  if (faceHot.length) {
+    ctx.globalAlpha = 0.75 * rainAlpha * w.speaking * (0.5 + 0.5 * level);
+    for (let k = 0; k < faceHot.length; k += 3) {
+      blit(faceHot[k + 2], TIERS - 1, faceHot[k], faceHot[k + 1]);
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  if (cam) ctx.restore();
+
+  overlayLines();
+  drawAlert();
+
+  // house vignette
+  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.42, W / 2, H / 2, H * 0.92);
+  v.addColorStop(0, "rgba(0,0,0,0)");
+  v.addColorStop(1, "rgba(0,0,0,0.34)");
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+}
+
+let last = 0;
+function frame(now) {
+  if (IS_SHOT) return;
+  const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016;
+  last = now;
+
+  fpsAcc += dt; fpsN++;
+  if (fpsAcc >= 0.4) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
+
+  if (!introDone) {
+    introT += dt;
+    const fade = drawIntro();
+    if (introT > 3.0) {
+      step(dt);
+      renderIntroBlend(1 - fade);
+      drawIntro();
+    }
+    if (introT >= INTRO_DUR) introDone = true;
+    requestAnimationFrame(frame);
+    return;
+  }
+
+  // ?autofly=1 -- deal a run as soon as the intro clears. Same code path as a
+  // Space press; Space still toggles normally afterwards.
+  if (autoflyPending) { autoflyPending = false; flyStart(); }
+
+  // ?beacon=1 -- publish liveness in the title. Chrome's debugging endpoint
+  // lists titles over plain HTTP, so a real fullscreen window can be checked
+  // from outside without a devtools socket. A hidden tab reports 0 frames
+  // because the browser freezes rAF -- that is the trap that wasted two rounds.
+  if (BEACON) {
+    beaconN++;
+    if (beaconN % 30 === 0) {
+      document.title = "BEACON f=" + beaconN + " fly=" + (flyRun ? flyRun.cur.subject : "off") +
+                       " z=" + (flyRun ? camAt().z.toFixed(2) : "1") +
+                       " vis=" + document.visibilityState;
+    }
+  }
+
+  step(dt);
+  flyStep(dt);
+  if (AUTOFLY_LOOP && !flyRun) {
+    autoflyGap += dt;
+    if (autoflyGap >= AUTOFLY_GAP_S) { autoflyGap = 0; flyStart(); }
+  }
+  renderScene(1);
+  if (!flyRun) drawHUD();   // chrome is gone for the whole run, back on landing
+  requestAnimationFrame(frame);
+}
+
+// rain fading up underneath the last beat of the intro
+function renderIntroBlend(a) {
+  ctx.globalAlpha = a;
+  renderScene(1);
+  ctx.globalAlpha = 1;
+}
+
+// ---------------------------------------------------------------------------
+// deterministic freeze-frame for self-verification
+// ---------------------------------------------------------------------------
+function resetSim() {
+  srand(0x9e3779b9);
+  T = 0; introT = INTRO_DUR; introDone = true;
+  for (const k in w) w[k] = (k === "idle") ? 1 : 0;
+  wAlert = 0; level = 0; energy = 0.2; glowE = 0.16; motionE = 0.18;
+  buildGrid();
+}
+
+function renderShot() {
+  resetSim();
+  const dt = 1 / 60;
+  const n = Math.max(1, Math.round(SHOT_T / dt));
+  for (let i = 0; i < n; i++) step(dt);
+  renderScene(1);
+  drawHUD();
+}
+
+// ?fly=<ms> -- replay a flythrough deterministically and freeze it, so a
+// headless screenshot can show a real mid-run frame instead of a guess
+function renderFly() {
+  resetSim();
+  // ?flyseed=N -- same scene, different hand. Live presses seed off the clock;
+  // this is how you see that variation without pressing Space forever.
+  if (Q.has("flyseed")) srand((parseInt(Q.get("flyseed"), 10) || 0) + 0x9e3779b9);
+  flyRun = null;
+  const dt = 1 / 60;
+  // ?flybench=base -- same loop, camera off. The control for the bench: without
+  // it there is no way to tell a slow camera from a slow renderer.
+  const benchBase = Q.get("flybench") === "base";
+  if (!benchBase) flyStart();
+  const n = Math.max(1, Math.round(FLY_T / dt));
+  for (let i = 0; i < n; i++) {
+    step(dt);
+    flyStep(dt);
+    if (!flyRun) break;      // ran past the landing
+  }
+  // ?flybench=1 -- run the whole flythrough and time every frame, so "holds
+  // 60fps" is a measurement instead of a claim. Worst frame is the one to read:
+  // the wide shots, where nothing is culled.
+  if (Q.get("flybench")) {
+    const ms = [], zms = [];
+    let worstZ = 0, worst = 0;
+    for (let i = 0; i < 1800 && (benchBase || flyRun); i++) {
+      const z = flyRun ? camAt().z : 1;
+      const t0 = performance.now();
+      step(dt);
+      if (!benchBase) flyStep(dt);
+      if (benchBase || flyRun) renderScene(1);
+      const el = performance.now() - t0;
+      ms.push(el);
+      zms.push({ z: z, ms: el });
+      if (el > worst) { worst = el; worstZ = z; }
+    }
+    // bucket by zoom: the spec's bar is the WIDE shot, where nothing is culled
+    const bk = {};
+    for (const e of zms) {
+      const k = e.z < 1.3 ? "wide(<1.3)" : e.z < 2 ? "mid(1.3-2)" : "close(>2)";
+      (bk[k] = bk[k] || []).push(e.ms);
+    }
+    const stat = (a) => {
+      a = a.slice().sort((x, y) => x - y);
+      return { n: a.length, avg: +(a.reduce((p, c) => p + c, 0) / a.length).toFixed(2),
+               p95: +a[(a.length * 0.95) | 0].toFixed(2), max: +a[a.length - 1].toFixed(2) };
+    };
+    const out = {};
+    for (const k in bk) out[k] = stat(bk[k]);
+    ms.sort((a, b) => a - b);
+    const avg = ms.reduce((a, b) => a + b, 0) / ms.length;
+    document.title = "FLYBENCH " + JSON.stringify({
+      frames: ms.length, w: W, h: H,
+      avg: +avg.toFixed(2), p95: +ms[(ms.length * 0.95) | 0].toFixed(2),
+      max: +worst.toFixed(2), maxAtZoom: +worstZ.toFixed(2),
+      byZoom: out, budget60: 16.67
+    });
+    return;
+  }
+
+  // ?flybail=1 -- bail out at FLY_T exactly as a second Space press would, so
+  // "returns cleanly to the normal view" is something you can look at
+  if (Q.get("flybail")) flyStop();
+
+  renderScene(1);
+  if (!flyRun) drawHUD();
+  // ?flyplan=1 -- the dealt deck, readable with `chrome --headless --dump-dom`
+  if (Q.get("flyplan")) {
+    document.title = "FLYPLAN " + JSON.stringify({
+      total: +flyLog.reduce((a, s) => a + s.dur, 0).toFixed(2),
+      shots: flyLog
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// polling
+// ---------------------------------------------------------------------------
+async function poll() {
+  const ac = new AbortController();
+  const to = setTimeout(() => ac.abort(), 800);
+  try {
+    const r = await fetch("/state", { cache: "no-store", signal: ac.signal });
+    const j = await r.json();
+    busState = j.state || "idle";
+    busLevel = Math.max(0, Math.min(1, +j.level || 0));
+    busAlert = !!j.alert;
+    lastGood = T;
+  } catch (e) { /* stale rule in updateState eases us home */ }
+  clearTimeout(to);
+}
+
+// ---------------------------------------------------------------------------
+// boot
+// ---------------------------------------------------------------------------
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, DPR_CAP);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  bakeAtlas();          // clears every zoom bake: they are DPR-dependent
+  buildGrid();
+  if (flyRun) flyStop();
+  visAll();
+  // headless chrome fires a late resize that would wipe a synchronous render
+  if (IS_FLYSHOT) renderFly();
+  else if (IS_SHOT) renderShot();
+}
+
+window.addEventListener("resize", resize);
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Space" || e.key === " ") {
+    e.preventDefault();                     // no page scroll, no button focus
+    if (flyRun) flyStop();                  // second press bails out clean
+    else if (introDone) flyStart();
+    return;
+  }
+  if (e.key === "f" || e.key === "F") { fpsOn = !fpsOn; return; }
+  if (!introDone) { introT = INTRO_DUR; introDone = true; }
+});
+
+bakeFace();
+resize();
+loadFaceImage();   // swaps in assets/face.png if you drop one there
+
+if (IS_FLYSHOT) {
+  renderFly();
+} else if (IS_SHOT) {
+  renderShot();
+} else {
+  if (!LOCAL_SIM) { poll(); setInterval(poll, POLL_MS); }
+  // prewarming is an optimization. It must never be able to take the page down
+  // with it -- start the render loop no matter what happens here.
+  try { prewarmAtlases(); } catch (e) { /* atlases bake on demand instead */ }
+  requestAnimationFrame(frame);
+}
+
+})();
+</script>
+</body>
+</html>

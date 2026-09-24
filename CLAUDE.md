@@ -62,7 +62,8 @@ Four pieces. Explain each in one sentence, in terms of what it does for them:
   open and fix." *Always recommend this one. It is the point.*
 - **Voice** — "Hold a key, talk, and I answer out loud."
 - **Screen** — "A full-screen face so you can see when I'm listening or
-  thinking."
+  thinking." *Ships in this repo, so it is instant. Needs Python 3 and a
+  browser.*
 - **Hands** *(only offer if a camera was found)* — "Move things on a glass board
   with your bare hands. No headset."
 
@@ -73,6 +74,25 @@ Four pieces. Explain each in one sentence, in terms of what it does for them:
 Install only the pieces they chose. Narrate progress in plain language. The
 speech models are large; tell them it is a few minutes and that it only happens
 once.
+
+**Screen — this one is already here. Do not tell them it is missing.**
+The visualizer ships in this repo at `visualizer/`. There is nothing to
+download and nothing to build. `bin/visualizer.sh` and `bin/visualizer.cmd`
+find it on their own, so picking the screen means: say it is ready, and move
+on. It needs **Python 3 and a browser**, nothing else — no packages, no
+internet.
+
+It works **with or without the voice piece.** With voice it shows Lefty
+listening, thinking and speaking. Without voice it sits at `idle`, which is
+correct rather than broken — say that out loud so an idle screen does not read
+as a failed install.
+
+> **History, so nobody re-breaks this.** Until 2026-09-24 the launchers looked
+> for a `~/lefty/visualizer` folder that nothing ever created, so choosing the
+> screen printed "the screen piece is not installed yet" and offered a dead
+> desktop icon. A real tester hit it live. The fix was to ship the code. If you
+> ever find yourself offering someone a shortcut to something that does not
+> exist, stop and say so instead.
 
 ### 5. Put the shortcuts on their desktop
 
@@ -141,9 +161,19 @@ Do not end with "installation complete." End the way they will use it:
 
 ## If they run this again later
 
-Same command, and that is on purpose. **Find what exists, keep what is theirs,
-upgrade the rest. Never delete anything they made** — especially not `memory/`.
-Say what you found and what you are changing before you change it.
+They do **not** paste the install command again — the `git clone` in it fails with
+"destination path 'lefty-in-a-box' already exists" and the `&&` chain stops before
+Claude Code ever starts. The re-run line is:
+
+```
+cd ~/lefty/lefty-in-a-box && git pull && claude "set me up"
+```
+
+If they tell you the install command failed that way, give them this line.
+
+From there: **find what exists, keep what is theirs, upgrade the rest. Never delete
+anything they made** — especially not `memory/`. Say what you found and what you are
+changing before you change it.
 
 ---
 
