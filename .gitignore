@@ -9,3 +9,16 @@ models/
 .env
 .DS_Store
 chrome-profile/
+
+# Voice line runtime — never ship a key, a model, or a live state file
+voice-line/.env
+voice-line/.venv/
+voice-line/uv.lock
+voice-line/.voice_state
+voice-line/.voice_waveform
+voice-line/.voice_alert
+voice-line/.voice_line.lock
+voice-line/.voice_loading_pid
+voice-line/crash.log
+__pycache__/
+*.pyc

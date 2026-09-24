@@ -75,6 +75,30 @@ Install only the pieces they chose. Narrate progress in plain language. The
 speech models are large; tell them it is a few minutes and that it only happens
 once.
 
+**Voice — the code is here, but it has a real install step. Be honest about it.**
+The voice line ships at `voice-line/`. It needs three outside things, and
+`voice-line/install.sh` (or `install.cmd`) walks through all of them, asking
+before it installs anything:
+
+1. **uv** — the Python runner.
+2. **whisper.cpp** — speech to text, running locally. **On a Mac with Homebrew
+   this is one command and the installer offers it.** On Windows there is no
+   ready-built copy, so it has to be compiled with CMake and Build Tools — say
+   that up front, because it is the hardest part of the whole product.
+3. **the speech model** — about 148 MB, fetched once.
+4. **ffmpeg** — audio plumbing.
+
+Kokoro, the voice Lefty answers in, comes down with the Python dependencies.
+It runs on their machine, costs nothing, and needs no account. ElevenLabs is
+optional and they do not need it.
+
+**On macOS the first run asks for Microphone AND Input Monitoring.** Input
+Monitoring is the one people miss, and without it push-to-talk does nothing and
+looks frozen. Tell them before it happens.
+
+**If they do not want to install a compiler, voice is a fair thing to skip.**
+Memory and screen are both complete without it.
+
 **Screen — this one is already here. Do not tell them it is missing.**
 The visualizer ships in this repo at `visualizer/`. There is nothing to
 download and nothing to build. `bin/visualizer.sh` and `bin/visualizer.cmd`
