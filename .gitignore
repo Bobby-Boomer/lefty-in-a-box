@@ -22,3 +22,6 @@ voice-line/.voice_loading_pid
 voice-line/crash.log
 __pycache__/
 *.pyc
+
+# Personal choices, not shipped defaults. install/personalize.sh writes this.
+lefty.config.json

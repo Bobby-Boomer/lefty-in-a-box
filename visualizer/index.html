@@ -49,19 +49,91 @@ const GLYPHS = (
   ":=*+<>|╌╎"
 ).split("");
 
-// palette targets, blended by eased state weight (multiply tint over grayscale)
-const PAL = {
-  idle:      [ 20, 255,  70],
-  listening: [  0, 240, 190],
-  thinking:  [ 90, 255, 120],
-  speaking:  [130, 255, 165],
-  alert:     [255,  62,  44]
+// ---------------------------------------------------------------------------
+// looks -- pick one with ?look=<name>, or set "look" in lefty.config.json
+// ---------------------------------------------------------------------------
+// Each look is the palette targets for the four states plus alert, blended by
+// eased state weight (multiply tint over grayscale). Alert stays red-ish in
+// every look on purpose: it is the one colour that has to read as "stop" no
+// matter what the rest is doing.
+//
+// Adding your own is five numbers a line. Copy a block, change the RGB, give it
+// a name, and it shows up in the installer's list automatically.
+const LOOKS = {
+  // the original. green rain.
+  rain: {
+    idle:      [ 20, 255,  70],
+    listening: [  0, 240, 190],
+    thinking:  [ 90, 255, 120],
+    speaking:  [130, 255, 165],
+    alert:     [255,  62,  44]
+  },
+  // warm amber, like an old terminal
+  amber: {
+    idle:      [255, 176,  20],
+    listening: [255, 214,  90],
+    thinking:  [255, 150,  40],
+    speaking:  [255, 226, 150],
+    alert:     [255,  62,  44]
+  },
+  // cold blue. quieter in a dark room.
+  ice: {
+    idle:      [ 70, 190, 255],
+    listening: [120, 225, 255],
+    thinking:  [ 40, 150, 255],
+    speaking:  [180, 240, 255],
+    alert:     [255,  82,  64]
+  },
+  // violet
+  violet: {
+    idle:      [170, 110, 255],
+    listening: [210, 160, 255],
+    thinking:  [140,  80, 255],
+    speaking:  [225, 195, 255],
+    alert:     [255,  72,  96]
+  },
+  // no colour at all, for anyone who finds the rest distracting
+  mono: {
+    idle:      [200, 200, 200],
+    listening: [240, 240, 240],
+    thinking:  [160, 160, 160],
+    speaking:  [255, 255, 255],
+    alert:     [255,  90,  70]
+  }
 };
+
+const LOOK_NAMES = Object.keys(LOOKS);
+
+// Resolved below once the config has loaded. Starts on the default so the very
+// first frames never draw with an undefined palette.
+let PAL = LOOKS.rain;
+
+function applyLook(name) {
+  if (name && LOOKS[name]) { PAL = LOOKS[name]; return name; }
+  return "rain";
+}
 
 // ---------------------------------------------------------------------------
 // url modes
 // ---------------------------------------------------------------------------
 const Q = new URLSearchParams(location.search);
+// ?look=<name> wins over the config file, so a look can be previewed without
+// editing anything. Unknown name falls back to the default rather than erroring.
+applyLook(Q.get("look"));
+
+// Then ask the server what the config file says. The URL wins if it named a
+// look, so a preview link is never overridden. This is fire-and-forget: if the
+// fetch fails the default is already in place and nothing breaks.
+(async () => {
+  try {
+    const r = await fetch("/config", { cache: "no-store" });
+    if (!r.ok) return;
+    const cfg = await r.json();
+    if (!Q.get("look")) applyLook(cfg.look);
+    if (cfg.name) document.title = cfg.name.toLowerCase() + " // digital rain";
+  } catch (_) { /* defaults are fine */ }
+})();
+
 const SHOT_STATE = Q.get("shot");                 // deterministic freeze-frame
 const SHOT_T     = parseFloat(Q.get("t") || "0") / 1000;
 const MOCK_STATE = Q.get("mockstate");            // local sim, never hits /state
@@ -819,18 +891,23 @@ function drawAlert() {
 
 function drawHUD() {
   const st = hudState, al = hudAlert;
+  // Follow the chosen look. These used to be hardcoded green, which left the
+  // badge reading bright green on an amber or ice screen -- caught on 2026-09-24
+  // by screenshotting every look instead of trusting the code.
+  const c = PAL.idle;
+  const tint = (a) => "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")";
   ctx.font = '11px Menlo,monospace';
   ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
-  ctx.fillStyle = al ? "rgba(255,90,70,0.85)" : "rgba(0,255,70,0.45)";
+  ctx.fillStyle = al ? "rgba(255,90,70,0.85)" : tint(0.45);
   const tag = st.toUpperCase() + (al ? "  ● ALERT" : "");
   ctx.fillText(tag, 14, H - 14);
   if (T - lastGood > STALE_SEC && !LOCAL_SIM) {
-    ctx.fillStyle = "rgba(0,255,70,0.22)";
+    ctx.fillStyle = tint(0.22);
     ctx.fillText("no signal", 14, H - 28);
   }
   if (fpsOn) {
     ctx.textAlign = "right";
-    ctx.fillStyle = "rgba(0,255,70,0.5)";
+    ctx.fillStyle = tint(0.5);
     ctx.fillText(fps.toFixed(0) + " fps", W - 14, 22);
   }
 }

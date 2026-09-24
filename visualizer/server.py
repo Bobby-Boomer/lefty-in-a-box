@@ -36,6 +36,28 @@ ALERT_FILE = os.path.join(BUS_DIR, ".voice_alert")
 
 WEB_ROOT = os.path.dirname(os.path.abspath(__file__))
 
+# lefty.config.json lives one level up, at the repo root, and holds the two
+# things the setup asks for: what the agent is called and which look it wears.
+# Missing or broken file is not an error -- the defaults are a working setup.
+CONFIG_FILE = os.path.join(os.path.dirname(WEB_ROOT), "lefty.config.json")
+DEFAULT_CONFIG = {"name": "Lefty", "look": "rain"}
+
+
+def read_config():
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return dict(DEFAULT_CONFIG)
+        out = dict(DEFAULT_CONFIG)
+        for k in ("name", "look"):
+            v = data.get(k)
+            if isinstance(v, str) and v.strip():
+                out[k] = v.strip()
+        return out
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return dict(DEFAULT_CONFIG)
+
 # A waveform older than this is not "live" any more.
 WAVEFORM_FRESH_SEC = 2.0
 
@@ -204,6 +226,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?", 1)[0]
+
+        if path == "/config":
+            # Read every time rather than caching: changing the name or look
+            # should take a reload, not a restart.
+            self._send(200, json.dumps(read_config()).encode(), "application/json")
+            return
 
         if path == "/state":
             payload = mock_state() if self.mock else bus_state()

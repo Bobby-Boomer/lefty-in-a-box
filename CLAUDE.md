@@ -37,6 +37,35 @@ into a terminal on trust. Do not spend that trust.
 
 Use that name from here on. Write it down in step 6.
 
+### 1b. Ask what THEY want to call YOU, and how the screen should look
+
+Two questions, still one at a time. This is the moment it stops being someone
+else's software.
+
+> "And what do you want to call me? Most people keep Lefty, but it is your
+> agent — Jarvis, Friday, your grandmother's name, whatever you'll actually
+> enjoy saying out loud."
+
+> "Last one. The screen comes in five looks: **rain** (green, the original),
+> **amber** (warm, like an old terminal), **ice** (cold blue, easier in a dark
+> room), **violet**, and **mono** (no colour at all). Which one?"
+
+**Do not make them decide blind.** If the screen is already running, tell them
+they can look first: `http://127.0.0.1:8777/?look=amber` and so on.
+
+Then run the picker, which writes `lefty.config.json` and rebuilds the desktop
+shortcuts under the new name:
+
+- macOS / Linux: `bash install/personalize.sh`
+- Windows: `install\personalize.cmd`
+
+**If they do not care, say so is fine** — Lefty and rain are the defaults and
+they can change both later by running that same script again.
+
+**Then actually use the name they chose** for the rest of the conversation. If
+they called you Jarvis, you are Jarvis from here on. Nothing is more hollow
+than asking someone to name you and then ignoring it.
+
 ### 2. Check the machine
 
 Run `./install/preflight.sh --json` and read it. Do not dump the JSON at them.
