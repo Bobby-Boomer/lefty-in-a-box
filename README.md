@@ -28,12 +28,22 @@ We would rather tell you that in the first paragraph than have you find it in st
   The folder is already shaped as an [Obsidian](https://obsidian.md) vault if you want to browse it
   visually, but **Obsidian is optional and we do not install it** — these are text files and any editor
   opens them.
-- **Voice** — hold one key, talk, let go. It answers through your speakers in a real voice.
+- **Voice** — hold one key, talk, let go. It answers through your speakers in a real voice. **The code ships
+  here** (`voice-line/`), and `voice-line/install.sh` walks you through the rest. Speech recognition runs
+  **on your machine** — nothing you say is sent anywhere — and the voice it answers in is free and local
+  too. **The honest catch:** on a Mac the speech engine is one Homebrew command, but on Windows it has to be
+  compiled, which is the hardest step in this whole project. Skipping voice is a perfectly good choice.
 - **A face** — a full-screen visualizer so you can see at a glance whether it is listening, thinking, or
-  answering.
+  answering. **This one ships in the repo** (`visualizer/`), so there is nothing to build and nothing to
+  download. It needs Python 3 and a browser, and it runs with or without the voice piece — without voice it
+  simply sits at idle.
 - **Hands** *(optional)* — a hand-tracked glass board you control in the air. Needs a camera. No headset.
-- **Two desktop shortcuts** — *Talk to Lefty* and *Lefty's Screen*. Double-click. That is the whole
-  interface after setup.
+- **Your name on it, and your look** — the setup asks what you want to call your agent and which of five
+  screen looks you want (green rain, amber, ice, violet, or mono). Your answers land in
+  `lefty.config.json`, the screen picks up the colour and your desktop icons carry the name. Change either
+  one any time with `install/personalize.sh` — nothing is baked in.
+- **Two desktop shortcuts** — *Talk to &lt;your name&gt;* and *&lt;your name&gt; Screen*. Double-click. That
+  is the whole interface after setup.
 - **Skills that do real work on day one** — daily notes, inbox triage into drafts you approve, meeting
   transcripts into owners and next steps, one long piece into a week of content.
 
@@ -48,18 +58,43 @@ can build things on your computer. Follow Anthropic's installer at
 [claude.com/claude-code](https://claude.com/claude-code), then run `claude` once and sign in with your
 Claude account.
 
-**Step 2 — paste this:**
+**Step 2 — paste this.** Pick the one for your machine, because they are genuinely different.
+
+**macOS or Linux** — in Terminal:
 
 ```
 mkdir -p ~/lefty && cd ~/lefty && git clone https://github.com/bobby-boomer/lefty-in-a-box && cd lefty-in-a-box && claude "set me up"
 ```
 
-That is it. Claude Code opens with the installer already talking to you. It asks your name, asks which
-pieces you want, builds them, puts the shortcuts on your desktop, and then interviews you about your
-business so the memory is not empty on day one.
+**Windows** — you need [Git for Windows](https://git-scm.com/download/win) first, which gives you Git Bash.
+Open **Git Bash** (press the Windows key, type `git bash`) and paste the exact same line above.
 
-**Already ran this before?** Same command. It finds what you have, keeps what is yours, and upgrades the
-rest. It never deletes anything you made.
+> **Do not paste that line into PowerShell.** It chains commands with `&&`, and Windows PowerShell 5.1 — the
+> one that ships with Windows — does not support `&&`. It will error out. If you would rather stay in
+> PowerShell, run these five lines one at a time instead:
+>
+> ```
+> mkdir "$env:USERPROFILE\lefty" -Force
+> cd "$env:USERPROFILE\lefty"
+> git clone https://github.com/bobby-boomer/lefty-in-a-box
+> cd lefty-in-a-box
+> claude "set me up"
+> ```
+>
+> Full click-by-click Windows walkthrough, including how to open Git Bash: **[docs/windows-install.md](docs/windows-install.md)**
+
+That is it. Claude Code opens with the installer already talking to you. It asks your name, asks what you
+want to call *it* and which look you want on screen, asks which pieces you want, builds them, puts the
+shortcuts on your desktop, and then interviews you about your business so the memory is not empty on day one.
+
+**Already ran this before?** Use this one instead — the install command above will stop with "destination
+path already exists" because the folder is already there.
+
+```
+cd ~/lefty/lefty-in-a-box && git pull && claude "set me up"
+```
+
+It finds what you have, keeps what is yours, and upgrades the rest. It never deletes anything you made.
 
 ---
 
