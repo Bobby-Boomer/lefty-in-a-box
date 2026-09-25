@@ -7,7 +7,8 @@ We filter with a held-state flag so repeats don't become fresh presses.
 import asyncio
 from pynput import keyboard
 
-# Default PTT key — right command on mac
+# Default PTT key — right Control. Chosen because nothing else claims it on
+# either OS; right Command is a modifier people already use on a Mac.
 PTT_KEY = keyboard.Key.ctrl_r
 
 # Timing constants

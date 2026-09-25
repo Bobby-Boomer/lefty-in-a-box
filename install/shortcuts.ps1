@@ -1,10 +1,14 @@
-# Windows twin of shortcuts.sh — creates the two desktop shortcuts.
+# Windows twin of shortcuts.sh — creates the desktop shortcuts.
 #
 #   powershell -ExecutionPolicy Bypass -File install\shortcuts.ps1 -InstallDir "C:\Users\you\lefty\lefty-in-a-box"
 #
 # Makes:
-#   Desktop\Talk to Lefty.lnk    -> runs bin\voice-line.cmd
-#   Desktop\Lefty Screen.lnk     -> runs bin\visualizer.cmd
+#   Desktop\Type to <Name>.lnk   -> runs bin\type-to.cmd      (always)
+#   Desktop\<Name> Screen.lnk    -> runs bin\visualizer.cmd   (always)
+#   Desktop\Talk to <Name>.lnk   -> runs bin\voice-line.cmd   (only once voice is installed)
+#
+# <Name> comes from lefty.config.json, written by install\personalize.cmd. It is
+# "Lefty" until someone changes it.
 #
 # Real .lnk shortcuts, so they get a proper icon and a normal double-click,
 # rather than a .bat sitting naked on the desktop.
@@ -25,6 +29,29 @@ if (-not (Test-Path $desktop)) {
   exit 0
 }
 
+# What is this agent called? Falls back to Lefty if the config is missing or
+# unreadable, because a shortcut with a default name beats no shortcut.
+$name = "Lefty"
+$config = Join-Path $InstallDir "lefty.config.json"
+if (Test-Path $config) {
+  try {
+    $found = (Get-Content -Raw -LiteralPath $config | ConvertFrom-Json).name
+    if ($found) { $name = $found.Trim() }
+  } catch { }
+}
+
+# Old shortcuts under a previous name would otherwise pile up on the desktop
+# every time someone renames their agent. Only ours are removed: the
+# description is the marker.
+foreach ($old in Get-ChildItem -LiteralPath $desktop -Filter *.lnk -ErrorAction SilentlyContinue) {
+  try {
+    $sh = New-Object -ComObject WScript.Shell
+    if ($sh.CreateShortcut($old.FullName).Description -like "*Lefty in a Box*") {
+      Remove-Item -LiteralPath $old.FullName -Force
+    }
+  } catch { }
+}
+
 function New-LeftyShortcut {
   param($LinkName, $Target, $Description)
 
@@ -34,7 +61,7 @@ function New-LeftyShortcut {
   $sc.TargetPath       = "cmd.exe"
   $sc.Arguments        = "/c `"$Target`""
   $sc.WorkingDirectory = $InstallDir
-  $sc.Description      = $Description
+  $sc.Description      = "$Description (Lefty in a Box)"
   # Use the repo icon if the installer put one there; otherwise Windows picks.
   $icon = Join-Path $InstallDir "assets\lefty.ico"
   if (Test-Path $icon) { $sc.IconLocation = $icon }
@@ -43,20 +70,41 @@ function New-LeftyShortcut {
 }
 
 New-LeftyShortcut `
-  -LinkName "Talk to Lefty.lnk" `
-  -Target (Join-Path $InstallDir "bin\voice-line.cmd") `
-  -Description "Hold the key, talk, let go."
+  -LinkName "Type to $name.lnk" `
+  -Target (Join-Path $InstallDir "bin\type-to.cmd") `
+  -Description "Open a normal chat window."
 
 New-LeftyShortcut `
-  -LinkName "Lefty Screen.lnk" `
+  -LinkName "$name Screen.lnk" `
   -Target (Join-Path $InstallDir "bin\visualizer.cmd") `
-  -Description "Lefty's full-screen face."
+  -Description "The full-screen face."
+
+# The voice line only gets an icon once it is actually installed. An icon that
+# opens a window to say "not set up yet" is worse than no icon.
+$voiceReady = $false
+foreach ($v in @("$env:USERPROFILE\lefty\voice-line", (Join-Path $InstallDir "voice-line"))) {
+  if (Test-Path (Join-Path $v ".venv")) { $voiceReady = $true; break }
+}
+
+if ($voiceReady) {
+  New-LeftyShortcut `
+    -LinkName "Talk to $name.lnk" `
+    -Target (Join-Path $InstallDir "bin\voice-line.cmd") `
+    -Description "Hold the key, talk, let go."
+}
 
 Write-Host ""
-Write-Host "Two shortcuts are on your desktop now."
+Write-Host "Your shortcuts are on the desktop now."
 Write-Host ""
-Write-Host "  Talk to Lefty     hold the key, talk, let go"
-Write-Host "  Lefty Screen      the full-screen face"
+Write-Host "  Type to $name     open a normal chat window"
+Write-Host "  $name Screen      the full-screen face"
+if ($voiceReady) {
+  Write-Host "  Talk to $name     hold the key, talk, let go"
+} else {
+  Write-Host ""
+  Write-Host "No Talk icon yet - the voice piece is not installed. Set it up with"
+  Write-Host "voice-line\install.cmd and run this again to get the icon."
+}
 Write-Host ""
 Write-Host "THE FIRST TIME you open one, Windows SmartScreen may show a blue"
 Write-Host "'Windows protected your PC' box. That is normal for anything without"

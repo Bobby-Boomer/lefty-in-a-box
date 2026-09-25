@@ -6,6 +6,13 @@ REM copy at %USERPROFILE%\lefty\voice-line that one wins.
 
 setlocal
 set HERE=%~dp0
+for %%I in ("%HERE%..") do set ROOT=%%~fI
+
+REM Point the session at this repo - the folder holding agent.md and memory\.
+REM An explicit --cwd from the caller still wins.
+set ARGS=%*
+echo %* | findstr /C:"--cwd" >nul
+if errorlevel 1 set ARGS=%* --cwd "%ROOT%"
 
 for %%D in ("%USERPROFILE%\lefty\voice-line" "%HERE%..\voice-line") do (
   if exist "%%~D\start.cmd" (
@@ -22,7 +29,7 @@ for %%D in ("%USERPROFILE%\lefty\voice-line" "%HERE%..\voice-line") do (
       exit /b 1
     )
     cd /d "%%~D"
-    call start.cmd %*
+    call start.cmd %ARGS%
     exit /b 0
   )
 )

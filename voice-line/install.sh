@@ -142,7 +142,9 @@ else
 fi
 
 printf "\n=== Done ===\n"
-say "Start it with:   ./start.sh      (or the 'Talk to Lefty' icon)"
+say "Start it with:   ./start.sh      (or the Talk icon on your desktop)"
+say "No Talk icon yet? Run install/shortcuts.sh from the folder above this one;"
+say "it only creates that icon once the voice piece is installed, which it is now."
 say "Hold the push-to-talk key, speak, let go."
 say ""
 say "On macOS the first run will ask for Microphone and Input Monitoring"

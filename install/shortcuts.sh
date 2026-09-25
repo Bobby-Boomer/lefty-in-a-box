@@ -5,8 +5,13 @@
 #   ./shortcuts.sh <install-dir>
 #
 # Makes:
-#   ~/Desktop/Talk to <Name>.command    -> starts the voice line
+#   ~/Desktop/Type to <Name>.command    -> opens Claude Code in the install dir
+#   ~/Desktop/Talk to <Name>.command    -> starts the voice line (voice only)
 #   ~/Desktop/<Name> Screen.command     -> opens the visualizer full screen
+#
+# The Type icon is the one that always works: memory is the piece everyone
+# installs, and until 2026-09-25 there was no icon for it at all — a memory-only
+# member got a Talk icon that told them voice was not set up, and no way in.
 #
 # <Name> comes from lefty.config.json, written by install/personalize.sh. It is
 # "Lefty" until someone changes it.
@@ -42,7 +47,7 @@ fi
 
 # Old shortcuts under a previous name would otherwise pile up on the desktop
 # every time someone renames their agent.
-for old in "$DESKTOP"/Talk\ to\ *.command "$DESKTOP"/*\ Screen.command; do
+for old in "$DESKTOP"/Talk\ to\ *.command "$DESKTOP"/Type\ to\ *.command "$DESKTOP"/*\ Screen.command; do
   [ -f "$old" ] && grep -q "Created by Lefty in a Box" "$old" 2>/dev/null && rm -f "$old"
 done
 
@@ -59,7 +64,39 @@ finish() {
   echo "  created: $1"
 }
 
+TYPE="$DESKTOP/Type to $NAME.command"
+cat > "$TYPE" <<EOF
+#!/bin/bash
+# Created by Lefty in a Box. Safe to delete; re-run the installer to get it back.
+cd "$INSTALL_DIR" || exit 1
+clear
+if ! command -v claude >/dev/null 2>&1; then
+  echo ""
+  echo "  Cannot find the 'claude' command, so this icon has nothing to open."
+  echo "  Install Claude Code, then double-click this again."
+  echo ""
+  read -r -p "  Press return to close this window..."
+  exit 1
+fi
+echo ""
+echo "  $NAME is reading your memory folder. Say what you need."
+echo "  Type /exit when you are done."
+echo ""
+claude
+echo ""
+read -r -p "  $NAME closed. Press return to close this window..."
+EOF
+finish "$TYPE"
+
+# The voice line only gets an icon once it is actually installed. An icon that
+# opens a window to say "not set up yet" is worse than no icon.
+VOICE_READY=""
+for _v in "$HOME/lefty/voice-line" "$INSTALL_DIR/voice-line"; do
+  [ -d "$_v/.venv" ] && VOICE_READY=1 && break
+done
+
 TALK="$DESKTOP/Talk to $NAME.command"
+if [ -n "$VOICE_READY" ]; then
 cat > "$TALK" <<EOF
 #!/bin/bash
 # Created by Lefty in a Box. Safe to delete; re-run the installer to get it back.
@@ -74,6 +111,7 @@ echo ""
 read -r -p "  $NAME stopped. Press return to close this window..."
 EOF
 finish "$TALK"
+fi
 
 SCREEN="$DESKTOP/$NAME Screen.command"
 cat > "$SCREEN" <<EOF
@@ -90,10 +128,20 @@ finish "$SCREEN"
 
 cat <<EOF
 
-Two shortcuts are on your desktop now.
+Your shortcuts are on the desktop now.
 
-  Talk to $NAME     hold the key, talk, let go
+  Type to $NAME     open a normal chat window
   $NAME Screen      the full-screen face
+EOF
+if [ -n "$VOICE_READY" ]; then
+  echo "  Talk to $NAME     hold the key, talk, let go"
+else
+  echo ""
+  echo "No Talk icon yet — the voice piece is not installed. Set it up with"
+  echo "voice-line/install.sh and run this again to get the icon."
+fi
+
+cat <<EOF
 
 THE FIRST TIME you double-click one, macOS may say it cannot verify the
 developer. That is normal for any script that did not come from the App Store.

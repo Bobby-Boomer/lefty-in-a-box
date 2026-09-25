@@ -1,6 +1,6 @@
 # Lefty in a Box
 
-**An AI chief of staff that actually knows your business — and two icons on your desktop to talk to it.**
+**An AI chief of staff that actually knows your business — and icons on your desktop to reach it.**
 
 Not a chatbot. A chatbot talks. This one works: it remembers your business between conversations, listens
 when you hold a key and talk, and answers out loud a second later.
@@ -37,13 +37,16 @@ We would rather tell you that in the first paragraph than have you find it in st
   answering. **This one ships in the repo** (`visualizer/`), so there is nothing to build and nothing to
   download. It needs Python 3 and a browser, and it runs with or without the voice piece — without voice it
   simply sits at idle.
-- **Hands** *(optional)* — a hand-tracked glass board you control in the air. Needs a camera. No headset.
+- **Hands** *(not in the box yet)* — a hand-tracked glass board you control in the air, no headset. It is
+  real and it works, but no hands code ships here, so setup does not offer it. When it lands, this line
+  changes.
 - **Your name on it, and your look** — the setup asks what you want to call your agent and which of five
   screen looks you want (green rain, amber, ice, violet, or mono). Your answers land in
   `lefty.config.json`, the screen picks up the colour and your desktop icons carry the name. Change either
   one any time with `install/personalize.sh` — nothing is baked in.
-- **Two desktop shortcuts** — *Talk to &lt;your name&gt;* and *&lt;your name&gt; Screen*. Double-click. That
-  is the whole interface after setup.
+- **Desktop shortcuts** — *Type to &lt;your name&gt;* for a normal chat window, *&lt;your name&gt; Screen* for
+  the face, and *Talk to &lt;your name&gt;* once the voice piece is installed. Double-click. That is the whole
+  interface after setup. You never have to open a terminal again.
 - **Skills that do real work on day one** — daily notes, inbox triage into drafts you approve, meeting
   transcripts into owners and next steps, one long piece into a week of content.
 

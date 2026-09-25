@@ -32,8 +32,15 @@ Rules for spoken output:
 - Never read URLs, file paths, or technical identifiers aloud character by character. Summarize them.
 """
 
-# Working directory — defaults to the Lefty project for Bobby's vault context
-DEFAULT_CWD = os.path.expanduser("~/documents/Lefty")
+# Working directory — the folder the agent thinks in, which is where agent.md
+# and memory/ live.
+#
+# CRITICAL: this is derived, never hardcoded to anyone's personal folder. Until
+# 2026-09-25 it was "~/documents/Lefty", which exists on exactly one machine on
+# earth. Everywhere else the voice session started in a directory that was not
+# there, so the agent booted with no boot file and no memory and had no idea
+# why. The launchers pass --cwd explicitly; this is the belt to that braces.
+DEFAULT_CWD = str(Path(__file__).resolve().parent.parent)
 
 # CRITICAL: query() is one-shot — without resume, every turn is a brand-new
 # session and the conversation cannot remember the sentence before it. We hold

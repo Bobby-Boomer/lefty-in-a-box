@@ -1,16 +1,28 @@
 # voice line // digital rain
 
 A fullscreen Matrix digital-rain scene that reacts to the voice line running in
-`~/voice-line/`. Canvas 2D, vanilla JS, one self-contained HTML file, no build
-step, no network, works offline.
+`../voice-line/` alongside it. Canvas 2D, vanilla JS, one self-contained HTML
+file, no build step, no network, works offline.
+
+It runs with or without the voice piece. **Without it the scene sits at `idle`,
+which is correct rather than broken.**
 
 ## Run it
 
-Double-click **`Start Visualizer.command`**.
+Double-click the **\<Name\> Screen** icon on the desktop, the one
+`install/shortcuts.sh` (or `shortcuts.ps1`) created.
+
+From a terminal it is `bin/visualizer.sh` on macOS and Linux,
+`bin\visualizer.cmd` on Windows, both from the repo root. Those launchers find
+this folder on their own; `start.sh` and `start.cmd` in here are what they call.
 
 It starts `server.py` if port 8777 is cold (log: `$TMPDIR/voice-visualizer.log`),
 then opens Chrome in kiosk mode on a throwaway profile so no tabs or extensions
 ride along. Quit with **Cmd-Q** -- the server stays warm for next time.
+
+The colour scheme comes from `look` in `lefty.config.json` at the repo root:
+`rain`, `amber`, `ice`, `violet` or `mono`. `install/personalize.sh` writes it,
+and `?look=amber` on the URL previews any of them without saving.
 
 To stop the server: `kill $(lsof -ti tcp:8777)`
 

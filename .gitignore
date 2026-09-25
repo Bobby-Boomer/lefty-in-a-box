@@ -25,3 +25,7 @@ __pycache__/
 
 # Personal choices, not shipped defaults. install/personalize.sh writes this.
 lefty.config.json
+
+# The agent's boot file, written by install/finish-setup.sh at the end of setup.
+# Theirs to edit, and gitignored so `git pull` never fights with it.
+agent.md

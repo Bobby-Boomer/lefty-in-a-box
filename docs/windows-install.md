@@ -124,25 +124,35 @@ surprise.
 **1. It says hello and asks your name.** *"Hi, I'm Lefty. Before I set anything up: what should I call
 you?"* It uses that name from there on.
 
-**2. It checks your machine and tells you in one line.** No raw output, no stack traces. If Python is
-missing or older than 3.10, voice is out and it says so. No microphone, no voice. No camera, no hand board.
-Under 5 GB free, it warns you before downloading the speech models.
+**1b. Then it asks what you want to call IT, and how the screen should look.** Most people keep Lefty, but
+it is your agent — Jarvis, Friday, your grandmother's name, whatever you will enjoy saying out loud. The
+screen comes in five looks: **rain**, **amber**, **ice**, **violet** and **mono**. Both answers are saved
+in `lefty.config.json`, both are optional, and you can change either one later by running
+`install\personalize.cmd` again. Your desktop icons get rebuilt under the new name automatically.
 
-**3. It asks which of the four pieces you want.** One question at a time.
+**2. It checks your machine and tells you in one line.** No raw output, no stack traces. If Python is
+missing or older than 3.10, voice is out and it says so. No microphone, no voice. Under 5 GB free, it warns
+you before downloading the speech models.
+
+**3. It asks which of the three pieces you want.** One question at a time.
 
 | Piece | What it does for you |
 |---|---|
 | **Memory** | It remembers your business between conversations instead of starting from zero. Plain text files on your own computer, which you can open and fix. |
 | **Voice** | Hold a key, talk, it answers out loud. |
 | **Screen** | A full-screen face so you can see when it is listening or thinking. |
-| **Hands** | Move things on a glass board with your bare hands. Only offered if it found a camera. |
+
+The hand-tracked glass board exists, but it is not in the box yet. The wizard is told not to offer it, and
+an icon for something that will not open is worse than no icon.
 
 **Memory alone is a completely valid answer.** It is the piece that does the most work, and the wizard is
 told not to upsell you.
 
 **4. It builds only what you picked.** If you took voice, the speech models are large — a few minutes, once.
 
-**5. It puts the two shortcuts on your desktop**, then warns you about the blue box *before* you click.
+**5. It puts your shortcuts on the desktop**, then warns you about the blue box *before* you click.
+Everyone gets **Type to \<Name\>** and **\<Name\> Screen**. **Talk to \<Name\>** only appears once the voice
+piece is actually installed. If you took memory only, the Type icon is your way in and nothing is missing.
 
 **6. The business interview. This is the part that matters.** Six or seven questions, one at a time, a real
 conversation rather than a form:
@@ -157,8 +167,13 @@ conversation rather than a form:
 Your answers go into `memory/Business.md`, `People.md`, `Rules.md` and `Goals.md`. Your files, on your
 computer. Nothing leaves the machine, and if it gets something wrong you open the file and fix it.
 
-**7. It does not say "installation complete."** It ends the way you will use it: *"All set. Two icons on
-your desktop. What are we working on today?"*
+**7. It hands the folder over.** The last thing it runs is `install\finish-setup.cmd`, which writes
+`agent.md` at the root of the folder. That file is the switch: before it exists, opening the folder starts
+the setup wizard; after it exists, opening the folder starts **your agent**, which reads `memory\` first and
+answers to the name you chose. It is a plain text file and it is yours to edit.
+
+**8. It does not say "installation complete."** It ends the way you will use it: *"All set. Your icons are
+on the desktop. What are we working on today?"*
 
 > **The hard rule the wizard runs under.**
 > It never installs anything on your computer without asking first, in plain words, including what it is
@@ -167,7 +182,7 @@ your desktop. What are we working on today?"*
 
 ---
 
-## Step 4 — the two desktop shortcuts
+## Step 4 — your desktop shortcuts
 
 The installer runs this for you. Here it is so you know what it did:
 
@@ -176,7 +191,16 @@ powershell -ExecutionPolicy Bypass -File install\shortcuts.ps1 -InstallDir "%CD%
 ```
 
 It creates real `.lnk` shortcuts, so they get a proper icon and a normal double-click rather than a bare
-batch file on your desktop. You should end up with **Talk to Lefty** and **Lefty Screen**.
+batch file on your desktop. They are named after whatever you called your agent:
+
+| Icon | What it opens | When you get it |
+|---|---|---|
+| **Type to \<Name\>** | A normal chat window, already pointed at your memory folder | Always |
+| **\<Name\> Screen** | The full-screen face | Always |
+| **Talk to \<Name\>** | Hold the key, talk, let go | Only once the voice piece is installed |
+
+Run that command again any time — after installing voice, or after renaming your agent — and the icons are
+rebuilt to match. Old ones under a previous name are cleaned up rather than left to pile up.
 
 > **Expect a blue box the first time. It is not a virus warning.**
 > Windows may show a SmartScreen panel saying it protected your PC. Click **More info**, then **Run
@@ -202,7 +226,9 @@ These four answers are what flip this page and the README from "unverified" to "
 
 1. Did the **clone** work, and which shell did you use — Git Bash or PowerShell?
 2. Did the **wizard talk to you** — did it ask your name and which pieces you wanted?
-3. Did **two icons appear** on your desktop, and did double-clicking them do something sensible?
+3. Did the **icons appear** on your desktop under the name you chose, and did double-clicking them do
+   something sensible? The **Type to \<Name\>** one is the important test — it should open a chat that
+   already knows your business.
 4. Did the **SmartScreen prompt** look like what we described, or did it say something different?
 
 If a launcher failed before install finished, tell us which message you saw.
