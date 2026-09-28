@@ -211,14 +211,58 @@ inventing new files.** The structure is doing real work: every folder has an ind
 note named after the folder, which is how you always know where to look.
 
 Use `[[double bracket]]` links when one note refers to another. They read fine as
-plain text and become clickable if they ever open the folder in Obsidian.
+plain text and become clickable in Obsidian.
 
 Tell them where it lives and that they can edit it any time, because **it is their
 file on their computer and nothing leaves the machine.**
 
-**Do not say you installed Obsidian. You did not.** If they ask, it is free and
-optional, the folder is already shaped for it, and nothing changes for you either
-way because you read the text.
+### 6b. Turn their projects into folders — do this while the interview is fresh
+
+**When they told you what they are building, they told you the shape of their vault.**
+Ask the one follow-up that turns it into structure:
+
+> "You mentioned a few different things going on. What would you call each of them?
+> I'll give each one its own folder so there's somewhere to put it."
+
+Then run it, one argument per project:
+
+```
+bash install/make-project-folders.sh "Smugglers Roost" "The Podcast" "The Shop"
+```
+
+Windows: same script through Git Bash, or create the folders by hand to match.
+
+**It makes `memory/projects/<Name>/<Name>.md` for each**, plus a `Projects.md` index
+linking them all. **Every folder gets an index note named after the folder** — that
+convention is how you always know where to start looking, so do not break it.
+
+**Why this matters, and it is not cosmetic.** Until 2026-09-28 those answers went into a
+paragraph in `Business.md` and nowhere else. **A member with three live projects opened
+their vault on day one and found five files and no room.** Give them the shelves while
+they are still telling you what goes on them.
+
+**Two or three projects is normal. Ten is not** — if they list ten, they are listing
+tasks, not projects. Ask which ones they would still name in a year.
+
+### 6c. Obsidian — offer it, and set the vault up either way
+
+```
+bash install/obsidian.sh          (Windows: install\obsidian.cmd)
+```
+
+**It asks before installing anything**, same as every other step. Say what it is in
+their terms: *"a free app for reading and linking these notes. I don't need it — I read
+the files either way. It's for you: clickable links, backlinks, and search across
+everything."* About 150 MB, a minute or two.
+
+**Whether they install it or not, the script makes `memory/` a real vault** — it writes
+the `.obsidian` config, turns on backlinks and the graph, and points daily notes at
+`memory/daily/`. So the day they do open it, it works.
+
+> **History, so nobody re-breaks this.** On the live Windows install with Tijo on
+> 2026-09-24, the installer left Obsidian entirely to the member and **the vault never got
+> set up.** A shared knowledge base nobody opens is not a knowledge base. If you find
+> yourself calling Obsidian "optional" and moving on, stop and run the script.
 
 ### 7. Hand the folder over — the step that ends the install
 

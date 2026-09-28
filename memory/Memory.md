@@ -14,6 +14,7 @@ whole trick. It is not a clever model, it is a model that took notes.
 | [[People]] | Everyone the agent will hear about, and who they are |
 | [[Rules]] | What it must never do without asking you first |
 | [[Goals]] | What you are actually trying to achieve, and by when |
+| `projects/` | One folder per thing you are building, each with its own index note |
 | `daily/` | One file per day. What got done, what is still open, what you decided |
 
 The installer fills these in from a short interview. **If it gets something wrong, open the file and fix
