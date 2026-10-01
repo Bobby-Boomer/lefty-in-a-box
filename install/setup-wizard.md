@@ -86,29 +86,50 @@ apology. **A missing camera does not matter**; nothing in the box uses one yet.
 
 **If free space is under 5 GB**, warn before downloading speech models.
 
-### 3. Ask what they want
+### 3. Tell them what they are getting. All three pieces.
 
-Three pieces. Explain each in one sentence, in terms of what it does for them:
+**Locked by Bobby 2026-10-01: all three are the install, not a menu.** What we
+promise people is the experience of talking to their own AI. Someone who ends up
+with memory only did not get what they came for, and they will not know what they
+are missing, because they never heard it speak.
+
+**So do not ask which pieces they want. Say what is coming, in one sentence each,
+then build all three:**
 
 - **Memory** — "I remember your business between conversations instead of
   starting from zero every time. Plain text files on your computer, which you can
-  open and fix." *Always recommend this one. It is the point.*
+  open and fix."
 - **Voice** — "Hold a key, talk, and I answer out loud."
 - **Screen** — "A full-screen face so you can see when I'm listening or
-  thinking." *Ships in this repo, so it is instant. Needs Python 3 and a
-  browser.*
-**Memory alone is a completely valid answer.** Do not upsell.
+  thinking."
+
+**This does not override the hard rule.** You still name every install before it
+runs, say roughly how long it takes, and wait for a yes. Default to all three;
+never install silently.
+
+**If they decline voice outright, respect it and move on** — do not ask twice.
+Finish the rest, and tell them once, plainly, how to add it later:
+`voice-line/install.cmd` on Windows, `voice-line/install.sh` on Mac, then re-run
+the shortcuts script to get the **Talk to \<Name\>** icon.
+
+**If voice cannot work on this machine** — no microphone, Python under 3.10, or
+they will not install Build Tools on Windows — that is a real answer, not a
+failure. Say which piece is missing and what it would take, build the other two,
+and leave the door open.
 
 **Do not offer Hands.** The hand-tracked glass board is real, but no hands code
 ships in this repo yet, and step 4 has no way to build it. Offering it would be
 the dead-icon mistake from the screen all over again. If they saw it mentioned
 somewhere and ask, the honest answer is: it exists, it is not in the box yet.
 
-### 4. Build what they picked
+### 4. Build all three
 
-Install only the pieces they chose. Narrate progress in plain language. The
-speech models are large; tell them it is a few minutes and that it only happens
-once.
+Narrate progress in plain language. The speech models are large; tell them it is
+a few minutes and that it only happens once.
+
+**Do not quietly drop voice because it looks like work.** It is the piece people
+came for, and it is the one most likely to get skipped out of politeness. Build
+it unless they said no or the machine genuinely cannot run it.
 
 **Voice — the code is here, but it has a real install step. Be honest about it.**
 The voice line ships at `voice-line/`. It needs three outside things, and
@@ -165,13 +186,27 @@ voice is actually installed**, because an icon that opens a window to say "not
 set up yet" is worse than no icon at all. Tell them which ones they have:
 
 - **Type to <Name>** — a normal chat window, pointed at their memory folder.
-  This is the one they will use most, and the only one a memory-only install
-  needs. Say so plainly, or they will think they got half a product.
+  This is the one they will use most. Say so plainly.
 - **<Name> Screen** — the full-screen face.
+- **<Name> Browser** — a Chrome window their AI can see and drive, sitting next
+  to them. Their own Chrome is never touched.
 - **Talk to <Name>** — hold the key and speak. Only if they installed voice.
 
-**On Windows, say plainly that this part is newer and less tested**, and ask them
-to tell you if anything looks wrong. Honesty here buys more goodwill than a
+**Say what the browser icon is for, in one sentence, or it will sit unused.**
+Something like: *"That one gives me eyes and hands. Say 'put that on a tab for
+me' instead of making me answer with a wall of text, and I'll build you a real
+page you can read, keep and paste from."* Full guide: `docs/shared-browser.md`.
+
+**Then mention the skills, once.** `skills/` is five plain markdown files that
+teach them what to ask for — "write up my day", "go through my inbox", "here's a
+transcript, what did we agree?", "turn this into a week of posts", and
+**"learn my business"**. They are editable text, not code. Most people never
+open that folder unless you point at it, and the one that matters most on day
+one is `business-brain.md`.
+
+**On Windows, memory and screen are tested as of 1 Oct 2026. Voice is not yet.**
+Say which is which rather than a blanket "this is untested" — and ask them to
+tell you if anything looks wrong. Honesty here buys more goodwill than a
 confident install that fails.
 
 Then **walk them through the first launch out loud**, because this is where

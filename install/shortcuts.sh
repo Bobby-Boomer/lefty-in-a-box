@@ -47,7 +47,7 @@ fi
 
 # Old shortcuts under a previous name would otherwise pile up on the desktop
 # every time someone renames their agent.
-for old in "$DESKTOP"/Talk\ to\ *.command "$DESKTOP"/Type\ to\ *.command "$DESKTOP"/*\ Screen.command; do
+for old in "$DESKTOP"/Talk\ to\ *.command "$DESKTOP"/Type\ to\ *.command "$DESKTOP"/*\ Screen.command "$DESKTOP"/*\ Browser.command; do
   [ -f "$old" ] && grep -q "Created by Lefty in a Box" "$old" 2>/dev/null && rm -f "$old"
 done
 
@@ -126,12 +126,30 @@ exec ./bin/visualizer.sh
 EOF
 finish "$SCREEN"
 
+# The shared browser ships in the repo and has no install step, so it always
+# gets an icon. Until 2026-10-01 it was reachable only by knowing the file path,
+# which meant most people never found the feature at all.
+BROWSER="$DESKTOP/$NAME Browser.command"
+cat > "$BROWSER" <<EOF
+#!/bin/bash
+# Created by Lefty in a Box. Safe to delete; re-run the installer to get it back.
+cd "$INSTALL_DIR" || exit 1
+clear
+echo ""
+echo "  Opening a Chrome window that $NAME can see and drive."
+echo "  Your own Chrome is not touched. Close this window to end it."
+echo ""
+exec ./browser/lefty-chrome.sh
+EOF
+finish "$BROWSER"
+
 cat <<EOF
 
 Your shortcuts are on the desktop now.
 
   Type to $NAME     open a normal chat window
   $NAME Screen      the full-screen face
+  $NAME Browser     a Chrome window it can see and drive
 EOF
 if [ -n "$VOICE_READY" ]; then
   echo "  Talk to $NAME     hold the key, talk, let go"

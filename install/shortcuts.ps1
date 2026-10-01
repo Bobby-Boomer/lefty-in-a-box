@@ -3,9 +3,14 @@
 #   powershell -ExecutionPolicy Bypass -File install\shortcuts.ps1 -InstallDir "C:\Users\you\lefty\lefty-in-a-box"
 #
 # Makes:
-#   Desktop\Type to <Name>.lnk   -> runs bin\type-to.cmd      (always)
-#   Desktop\<Name> Screen.lnk    -> runs bin\visualizer.cmd   (always)
-#   Desktop\Talk to <Name>.lnk   -> runs bin\voice-line.cmd   (only once voice is installed)
+#   Desktop\Type to <Name>.lnk     -> runs bin\type-to.cmd            (always)
+#   Desktop\<Name> Screen.lnk      -> runs bin\visualizer.cmd         (always)
+#   Desktop\<Name> Browser.lnk     -> runs browser\lefty-chrome.cmd   (always)
+#
+# NOTE ON THE NAME: no apostrophe. "<Name>'s Browser" is the nicer label, but
+# shortcuts.sh learned the hard way that punctuation in a script-written
+# filename is not worth it. Keep both platforms on the same plain form.
+#   Desktop\Talk to <Name>.lnk     -> runs bin\voice-line.cmd         (only once voice is installed)
 #
 # <Name> comes from lefty.config.json, written by install\personalize.cmd. It is
 # "Lefty" until someone changes it.
@@ -79,6 +84,14 @@ New-LeftyShortcut `
   -Target (Join-Path $InstallDir "bin\visualizer.cmd") `
   -Description "The full-screen face."
 
+# The shared browser. This ships in the repo and needs no install step, so it
+# always gets an icon. It was reachable only by knowing the file path until
+# 2026-10-01, which meant most people never found the feature at all.
+New-LeftyShortcut `
+  -LinkName "$name Browser.lnk" `
+  -Target (Join-Path $InstallDir "browser\lefty-chrome.cmd") `
+  -Description "A Chrome window your AI can see and drive."
+
 # The voice line only gets an icon once it is actually installed. An icon that
 # opens a window to say "not set up yet" is worse than no icon.
 $voiceReady = $false
@@ -96,19 +109,21 @@ if ($voiceReady) {
 Write-Host ""
 Write-Host "Your shortcuts are on the desktop now."
 Write-Host ""
-Write-Host "  Type to $name     open a normal chat window"
-Write-Host "  $name Screen      the full-screen face"
+Write-Host "  Type to $name      open a normal chat window"
+Write-Host "  $name Screen       the full-screen face"
+Write-Host "  $name Browser    a Chrome window it can see and drive"
 if ($voiceReady) {
-  Write-Host "  Talk to $name     hold the key, talk, let go"
+  Write-Host "  Talk to $name      hold the key, talk, let go"
 } else {
   Write-Host ""
   Write-Host "No Talk icon yet - the voice piece is not installed. Set it up with"
   Write-Host "voice-line\install.cmd and run this again to get the icon."
 }
 Write-Host ""
-Write-Host "THE FIRST TIME you open one, Windows SmartScreen may show a blue"
-Write-Host "'Windows protected your PC' box. That is normal for anything without"
-Write-Host "a paid code-signing certificate. To get past it once:"
+Write-Host "Windows may show a blue 'Windows protected your PC' box on something"
+Write-Host "you downloaded. It did NOT appear on these shortcuts when this was"
+Write-Host "tested on 1 Oct 2026, because they are created here rather than"
+Write-Host "downloaded. If you do see it:"
 Write-Host ""
 Write-Host "  Click 'More info'  ->  'Run anyway'"
 Write-Host ""

@@ -1,13 +1,17 @@
 # Lefty in a Box — the Windows install, step by step
 
-> **Read this first. Windows is partly proven, as of 1 October 2026.**
-> Mac is tested end to end. On Windows, the first real run happened on 1 Oct 2026 and got this far:
-> **the clone works in Git Bash, and the setup wizard runs all the way through the business interview,
-> machine check included.** Those are confirmed on a real Windows machine, not assumed.
+> **Windows is tested, as of 1 October 2026.** Memory and screen, end to end, on a real Windows machine.
 >
-> **Still unverified:** the desktop shortcuts, and the SmartScreen prompt. Those both happen after the
-> wizard hands the folder over, so nobody has watched them yet. If something breaks there, that is the
-> useful outcome, not a failure. Tell us what you saw, exactly as it was worded.
+> What was watched directly on that run: the **clone in Git Bash**, the **setup wizard** start to finish
+> including the machine check, the **desktop shortcuts** created under the owner's chosen agent name, the
+> **chat window opening with the business memory already loaded**, and the **screen running**. Asked
+> "what is my business and who are my clients," the agent answered from the interview with company names,
+> roles, a grant it had run, and a named partner, then said plainly which parts it did *not* know and
+> asked one question to fill the gap. Nothing was pasted in.
+>
+> **Still unproven on Windows: the voice line.** It is the one piece with a compile step here, and no one
+> has finished it yet. See Step 5. If it breaks for you, that is the useful outcome, not a failure.
+> Tell us what you saw, worded exactly as it appeared.
 
 ---
 
@@ -246,10 +250,20 @@ batch file on your desktop. They are named after whatever you called your agent:
 Run that command again any time — after installing voice, or after renaming your agent — and the icons are
 rebuilt to match. Old ones under a previous name are cleaned up rather than left to pile up.
 
-> **Expect a blue box the first time. It is not a virus warning.**
-> Windows may show a SmartScreen panel saying it protected your PC. Click **More info**, then **Run
-> anyway**. It appears because the shortcut is new and unsigned, not because anything is wrong. We are
-> telling you before it happens rather than after.
+> **About the blue SmartScreen box — we were warning you about the wrong moment.**
+> Earlier versions of this page told you to expect a blue *"Windows protected your PC"* panel the first
+> time you double-click a shortcut. **On the 1 Oct 2026 test it did not appear at all**, and that is
+> probably the normal case: SmartScreen fires on files carrying the *mark of the web*, the flag Windows
+> puts on things downloaded from the internet. **Your shortcuts are created locally, on your machine, by
+> the installer** — so they usually carry no such flag and nothing pops up.
+>
+> **Where you genuinely may see it is on downloads:** the Git for Windows installer, and the Visual Studio
+> Build Tools installer if you go on to install voice. There, click **More info** then **Run anyway**.
+>
+> If a blue box *does* appear on a shortcut, tell us the exact first line. Three different panels get
+> called "the blue box" and they mean different things: **SmartScreen** says *Windows protected your PC*,
+> **UAC** asks *do you want to allow this app to make changes*, and **Defender** is a different alert
+> again. Which one it was changes the answer.
 
 ---
 
