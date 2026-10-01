@@ -57,6 +57,23 @@ except Exception:
   [ -n "$FOUND" ] && NAME="$FOUND"
 fi
 
+# Make memory/ a real Obsidian vault, every time, no questions asked.
+#
+# WHY THIS IS HERE AND NOT ONLY IN THE WIZARD: step 6c of setup-wizard.md tells
+# the installer to run install/obsidian.sh. It got skipped on the live Windows
+# install with Tijo on 2026-09-24, and skipped AGAIN with Leigh Anne on
+# 2026-10-01. Twice is not bad luck, it is a design fault: the vault depended on
+# a conversation remembering a step. Now the script that must run anyway does it.
+#
+# --vault-only installs NOTHING. It writes .obsidian config inside a folder the
+# member already owns, so the hard rule is untouched. The app itself stays an
+# explicit, asked-for choice back in step 6c.
+if [ -x "$ROOT/install/obsidian.sh" ] || [ -f "$ROOT/install/obsidian.sh" ]; then
+  bash "$ROOT/install/obsidian.sh" --vault-only >/dev/null 2>&1 \
+    && echo "  memory/ is set up as an Obsidian vault." \
+    || echo "  Could not set up the Obsidian vault. Run: bash install/obsidian.sh --vault-only"
+fi
+
 echo ""
 echo "  Setup is finished. This folder is $NAME now, not an installer."
 echo "  agent.md is the file they read at boot — it is yours, edit it any time."

@@ -52,6 +52,26 @@ if exist "%ROOT%\lefty.config.json" (
   )
 )
 
+REM Make memory\ a real Obsidian vault, every time, no questions asked.
+REM
+REM WHY THIS IS HERE AND NOT ONLY IN THE WIZARD: step 6c of setup-wizard.md tells
+REM the installer to run install\obsidian.cmd. It got skipped on the live Windows
+REM install with Tijo on 2026-09-24, and skipped AGAIN with Leigh Anne on
+REM 2026-10-01. Twice is not bad luck, it is a design fault: the vault depended on
+REM a conversation remembering a step. Now the script that must run anyway does it.
+REM
+REM --vault-only installs NOTHING. It writes .obsidian config inside a folder the
+REM member already owns, so the hard rule is untouched. The app itself stays an
+REM explicit, asked-for choice back in step 6c.
+if exist "%ROOT%\install\obsidian.cmd" (
+  call "%ROOT%\install\obsidian.cmd" --vault-only >nul 2>&1
+  if errorlevel 1 (
+    echo   Could not set up the Obsidian vault. Run:  install\obsidian.cmd --vault-only
+  ) else (
+    echo   memory\ is set up as an Obsidian vault.
+  )
+)
+
 echo.
 echo   Setup is finished. This folder is %NAME% now, not an installer.
 echo   agent.md is the file they read at boot - it is yours, edit it any time.

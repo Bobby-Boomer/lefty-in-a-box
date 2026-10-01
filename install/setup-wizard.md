@@ -296,8 +296,15 @@ the `.obsidian` config, turns on backlinks and the graph, and points daily notes
 
 > **History, so nobody re-breaks this.** On the live Windows install with Tijo on
 > 2026-09-24, the installer left Obsidian entirely to the member and **the vault never got
-> set up.** A shared knowledge base nobody opens is not a knowledge base. If you find
-> yourself calling Obsidian "optional" and moving on, stop and run the script.
+> set up.** It happened **again with Leigh Anne on 2026-10-01**. A shared knowledge base
+> nobody opens is not a knowledge base. If you find yourself calling Obsidian "optional"
+> and moving on, stop and run the script.
+>
+> **Twice was enough: step 7 now creates the vault itself.** `finish-setup` runs
+> `obsidian --vault-only` as its last act, so `memory/` becomes a real vault even if you
+> skip this step entirely. **That is a backstop, not permission to skip it** — the
+> backstop cannot offer them the app, explain what it is for, or answer their questions.
+> Still run 6c. It just no longer costs them the vault when you don't.
 
 ### 7. Hand the folder over — the step that ends the install
 
