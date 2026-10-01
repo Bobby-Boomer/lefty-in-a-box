@@ -1,9 +1,13 @@
 # Lefty in a Box — the Windows install, step by step
 
-> **Read this first. Windows is not proven yet.**
-> Mac is tested end to end. **Windows is written and shipped but has never been run on a real Windows
-> machine.** The README says exactly that, and it will keep saying it until someone runs it and reports
-> back. If something breaks here, that is the useful outcome, not a failure. Tell us what you saw.
+> **Read this first. Windows is partly proven, as of 1 October 2026.**
+> Mac is tested end to end. On Windows, the first real run happened on 1 Oct 2026 and got this far:
+> **the clone works in Git Bash, and the setup wizard runs all the way through the business interview,
+> machine check included.** Those are confirmed on a real Windows machine, not assumed.
+>
+> **Still unverified:** the desktop shortcuts, and the SmartScreen prompt. Those both happen after the
+> wizard hands the folder over, so nobody has watched them yet. If something breaks there, that is the
+> useful outcome, not a failure. Tell us what you saw, exactly as it was worded.
 
 ---
 
@@ -31,17 +35,36 @@ computer.
 
 ---
 
-## Step 2 — pick your shell. This is the part the Mac instructions get wrong on Windows.
+## Step 2 — pick your shell
 
-> **The defect, and why this page exists.**
-> The one-paste install command in the README is written for Mac. It chains commands with `&&` and uses
-> `mkdir -p` and `~`. **Windows PowerShell 5.1, which is what ships on Windows by default, does not support
-> `&&`.** Pasted there it will error out. Use one of the two versions below instead.
+# **Use Git Bash.**
 
-**Option A — Git Bash. Recommended, and the closest thing to the tested Mac path.**
+That is the whole answer. If you are standing at a terminal wondering which one, it is Git Bash. Everything
+below is why.
 
-If you install Git for Windows you get Git Bash, a terminal that speaks the same language as the Mac. You
-need Git anyway for the clone. In Git Bash the original one-liner works exactly as written.
+**PowerShell 5.1, the one that ships with Windows, cannot run our install command at all.** The one-paste
+line in the README chains commands with `&&` and uses `mkdir -p` and `~`. PowerShell 5.1 has no `&&`.
+Pasted there it errors out before it does anything.
+
+Git Bash comes with Git for Windows, which you need for the clone anyway. It speaks the same language as
+the Mac, so the original one-liner works exactly as written.
+
+There is a second reason, and it matters more than it looks. The wizard's machine check is written as
+`install/preflight.sh`. **There is no `preflight.ps1`.** In PowerShell that call fails outright. In Git
+Bash it runs. So Git Bash is the better path on both counts, not just the pasting one.
+
+> **If you run Claude Code inside VS Code, read this.**
+> VS Code's built-in terminal defaults to **PowerShell**, and it will happily let you paste the install
+> command and fail. You will see a prompt like `PS C:\Users\you>` at the bottom of the window. That is
+> the wrong shell.
+>
+> Fix it one of two ways. Either click the dropdown arrow beside the **+** in the terminal panel and
+> choose **Git Bash**, or leave VS Code alone and open Git Bash on its own from the Start menu. Both work.
+> Check the prompt before you paste: Git Bash ends in a `$`, PowerShell starts with `PS`.
+
+**Option B — PowerShell**, if you would rather stay there, is in Step 2b. It is five lines run one at a
+time instead of one paste, and the machine check will stumble. It works, but Git Bash is the path we
+recommend.
 
 ---
 
@@ -87,6 +110,26 @@ claude --version
 
 If the second says command not found, go back to Step 1 and finish the Claude Code install. **Do not run
 the big command until both of these answer.**
+
+---
+
+## Step 2a½ — have these six answers ready before you start
+
+The install ends with an interview about your business. Six questions, one at a time. That is the part
+that fills the memory, and it is the reason this is not a chatbot.
+
+- What is your business, in your own words?
+- Who is it for?
+- What are you actually trying to build this year?
+- Who are the people it will hear about, partners, clients, family in the business?
+- What should it never do without asking you first?
+- How do you like to be talked to, blunt, gentle, funny?
+
+**Think about these now and the interview takes about five minutes. Go in cold and you will stall halfway
+through trying to word them well.** Your answers go into plain text files on your own machine that you can
+open and edit afterwards, so nothing here is permanent and nothing has to be perfect.
+
+**You can also stop mid-interview, go think, and come back.** That is normal and nothing breaks.
 
 ---
 
@@ -155,7 +198,8 @@ Everyone gets **Type to \<Name\>** and **\<Name\> Screen**. **Talk to \<Name\>**
 piece is actually installed. If you took memory only, the Type icon is your way in and nothing is missing.
 
 **6. The business interview. This is the part that matters.** Six or seven questions, one at a time, a real
-conversation rather than a form:
+conversation rather than a form. These are the ones you prepped for back in Step 2a½. **You can stop here,
+go think, and come back. Nothing breaks.**
 
 - What is your business, in your own words?
 - Who is it for?

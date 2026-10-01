@@ -61,6 +61,23 @@ can build things on your computer. Follow Anthropic's installer at
 [claude.com/claude-code](https://claude.com/claude-code), then run `claude` once and sign in with your
 Claude account.
 
+**Before you paste, know what it is going to ask you.**
+
+The install ends with a short interview about your business. Six questions, one at a time. That is what
+fills the memory so it is not empty on day one, and it is the part that makes this different from a
+chatbot. Have rough answers ready and the whole thing takes about five minutes. Go in cold and you will
+stall halfway through trying to word it well.
+
+- What is your business, in your own words?
+- Who is it for?
+- What are you actually trying to build this year?
+- Who are the people it will hear about, partners, clients, family in the business?
+- What should it never do without asking you first?
+- How do you like to be talked to, blunt, gentle, funny?
+
+Nothing here is permanent. Your answers land in plain text files you can open and fix, and you can stop
+mid-interview, go think, and come back. Nothing breaks if you walk away.
+
 **Step 2 — paste this.** Pick the one for your machine, because they are genuinely different.
 
 **macOS or Linux** — in Terminal:
