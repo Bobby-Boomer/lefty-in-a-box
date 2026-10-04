@@ -58,9 +58,10 @@ Ordered by how little work they take. Pick the first one that fits.
    "write that up as a markdown file" and save it into `inbox/`. Give the phone
    agent one standing instruction: *always finish with a file I can save.*
 3. **A messaging bridge** — Telegram is the usual one, because its bot API is
-   simple and it is on every platform. The bot drops each message into `inbox/`.
-   This is the nicest to use and the most to build. **It needs a token and a
-   process that stays running, so it is a deliberate project, not a quick win.**
+   simple and it is on every platform. **This one is no longer a recipe: it ships
+   working in `telegram/`, and `skills/telegram-bridge.md` walks the setup.** It
+   is a full conversation with the agent from the phone, not just a drop box.
+   It still needs a bot token and a process that stays running.
 
 **On a Mac there is a fourth option that costs nothing: Messages is already on
 the computer.** iMessage syncs to the Mac, so the agent can read a thread the

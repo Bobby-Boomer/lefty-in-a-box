@@ -14,3 +14,4 @@ it follows the file. Open any of them and edit it; it is yours.
 | `content-repurpose.md` | "turn this into a week of posts" |
 | `business-brain.md` | "learn my business" |
 | `mobile-bridge.md` | "let me talk to you from my phone while I'm driving" |
+| `telegram-bridge.md` | "set me up on Telegram so I can text you" |

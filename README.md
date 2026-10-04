@@ -37,6 +37,10 @@ We would rather tell you that in the first paragraph than have you find it in st
   answering. **This one ships in the repo** (`visualizer/`), so there is nothing to build and nothing to
   download. It needs Python 3 and a browser, and it runs with or without the voice piece — without voice it
   simply sits at idle.
+- **Your phone** — text your agent on Telegram and it answers with everything it knows. **Ships here**
+  (`telegram/`), standard-library Python, **nothing to install**. You make a bot with Telegram's own
+  @BotFather, hand your agent the token, and the first message you send locks the bridge to your chat and
+  nobody else's. `telegram/README.md` is the five-minute walkthrough.
 - **Hands** *(not in the box yet)* — a hand-tracked glass board you control in the air, no headset. It is
   real and it works, but no hands code ships here, so setup does not offer it. When it lands, this line
   changes.
