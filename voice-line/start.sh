@@ -118,6 +118,19 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
     set +a
 fi
 
+# ── Housekeeping: keep ~/.claude/projects off the disk ─────────────────────
+# Claude Code session transcripts are never cleaned up by anything else, and the
+# voice line resumes one session for days at a time. Unchecked this reached
+# 452 MB on the machine it was written on. The pruner gzips anything idle 14+
+# days into logs/transcript-archive and deletes those after 90.
+#
+# It holds every live session and refuses to run if it cannot identify one, so
+# it is safe to fire blind. Backgrounded and silenced: housekeeping must never
+# delay or block the voice line starting.
+if [ -x "$SCRIPT_DIR/prune-transcripts.sh" ]; then
+    "$SCRIPT_DIR/prune-transcripts.sh" >/dev/null 2>&1 &
+fi
+
 # ── Preflight checks ───────────────────────────────────────────────────────
 
 # Check ffmpeg
@@ -216,6 +229,19 @@ if [ "$(uname)" = "Darwin" ]; then
     warn "  - Microphone: System Settings > Privacy > Microphone > Terminal"
     warn "  (Grant these if prompted, then re-run)"
     echo ""
+fi
+
+# ── Retire a bloated session before the app reads it ───────────────────────
+# brain.py resumes the stored session so the conversation carries over. If that
+# transcript is already fat, resuming it walks straight into a mid-conversation
+# compaction — the agent goes quiet and loses its thread with nothing in any log.
+# Retires the pointer only; the transcript stays for the pruner.
+#
+# MUST run here: synchronous, and after the stale-instance kill above. A running
+# voice line rewrites .voice_session every turn, so doing this any earlier (or in
+# the background) accomplishes nothing.
+if [ -x "$SCRIPT_DIR/retire-fat-session.sh" ]; then
+    "$SCRIPT_DIR/retire-fat-session.sh" 2>/dev/null || true
 fi
 
 # ── Launch voice line ───────────────────────────────────────────────────────

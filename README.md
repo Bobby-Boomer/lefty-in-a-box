@@ -33,6 +33,11 @@ We would rather tell you that in the first paragraph than have you find it in st
   **on your machine** — nothing you say is sent anywhere — and the voice it answers in is free and local
   too. **The honest catch:** on a Mac the speech engine is one Homebrew command, but on Windows it has to be
   compiled, which is the hardest step in this whole project. Skipping voice is a perfectly good choice.
+- **Upkeep that runs itself** — the voice line keeps one long conversation going so your agent remembers
+  what you just said, and left alone that conversation grows until it hits the model's context limit and
+  compacts **mid-sentence** — which reads as your agent suddenly going strange for no reason. Three guards
+  now prevent that and keep session transcripts from filling your disk, automatically, on every start.
+  Nothing to configure. [How it works and how to tune it](docs/voice-line-upkeep.md).
 - **A face** — a full-screen visualizer so you can see at a glance whether it is listening, thinking, or
   answering. **This one ships in the repo** (`visualizer/`), so there is nothing to build and nothing to
   download. It needs Python 3 and a browser, and it runs with or without the voice piece — without voice it

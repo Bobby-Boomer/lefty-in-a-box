@@ -50,6 +50,13 @@ SESSION_FILE = Path(__file__).with_name(".voice_session")
 # A relaunch inside this window rejoins the same conversation. Past it, boot
 # fresh and let the vault carry the history — the vault is the memory, not the
 # transcript, and dragging a week-old context blob into every boot is worse.
+#
+# Measured from the session's BIRTH, never from the last turn. Until 2026-10-08
+# the timestamp was re-stamped on every save, so this window slid forward with
+# each turn and a session could never expire while someone kept talking to it.
+# One ran for two days, reached a 22MB transcript, and then hit the context
+# limit and force-compacted MID-CONVERSATION — which from the outside looks
+# like the voice line going strange for no reason.
 SESSION_MAX_AGE_S = 12 * 60 * 60
 
 # The SDK frames the CLI's stdout as NDJSON and refuses any single line bigger
@@ -72,6 +79,9 @@ class Brain:
         self._cwd = cwd or DEFAULT_CWD
         self._warmed = False
         self._can_use_tool = can_use_tool
+        # Must exist before _load_session() — it populates this on a hit, and
+        # _save_session() reads it on every turn.
+        self._session_started_at = 0.0
         self._session_id = self._load_session()
 
     # ── Session continuity ──────────────────────────────────────────────────
@@ -83,25 +93,38 @@ class Brain:
         except (OSError, ValueError):
             return None
         session_id = data.get("session_id")
-        saved_at = data.get("saved_at", 0)
-        if not session_id or (time.time() - saved_at) > SESSION_MAX_AGE_S:
+        # started_at is the session's birth. Fall back to saved_at for files
+        # written by the old format so an upgrade doesn't look like a new birth.
+        started_at = data.get("started_at") or data.get("saved_at", 0)
+        if not session_id or (time.time() - started_at) > SESSION_MAX_AGE_S:
             return None
+        self._session_started_at = started_at
         return session_id
 
     def _save_session(self, session_id: str) -> None:
         """Record the live session id. A write failure must not kill the turn."""
         if not session_id:
             return
+        # Carry the birth timestamp forward. Only a genuinely new session id
+        # gets a new birth, so the expiry window cannot slide. saved_at is kept
+        # for diagnostics — it is deliberately NOT what expiry measures.
+        if session_id != self._session_id or not self._session_started_at:
+            self._session_started_at = time.time()
         self._session_id = session_id
         try:
             SESSION_FILE.write_text(
-                json.dumps({"session_id": session_id, "saved_at": time.time()})
+                json.dumps({
+                    "session_id": session_id,
+                    "started_at": self._session_started_at,
+                    "saved_at": time.time(),
+                })
             )
         except OSError:
             pass
 
     def _clear_session(self) -> None:
         self._session_id = None
+        self._session_started_at = 0.0
         try:
             SESSION_FILE.unlink(missing_ok=True)
         except OSError:

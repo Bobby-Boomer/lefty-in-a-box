@@ -8,6 +8,7 @@ import asyncio
 import io
 import os
 import struct
+import time
 import subprocess
 import numpy as np
 import sounddevice as sd
@@ -23,7 +24,19 @@ ELEVENLABS_MODEL = "eleven_turbo_v2_5"
 ELEVENLABS_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 
 KOKORO_URL = "http://localhost:8880/v1/audio/speech"
-KOKORO_VOICE = "af_heart"
+# The fallback voice must not change who your agent sounds like. The old default
+# `af_heart` is an American FEMALE voice, so any ElevenLabs outage silently
+# swapped the agent's apparent gender mid-conversation with nothing on screen to
+# say the fallback had even happened. Caught 2026-10-01. Set KOKORO_VOICE in
+# .env to whatever matches your agent — `af_*` for female, `am_*` for male.
+KOKORO_VOICE = os.environ.get("KOKORO_VOICE", "am_michael")
+
+# How long to stay on Kokoro after ElevenLabs rejects us, before trying again.
+# This used to be "for the rest of the session", which meant a single 401 from
+# an exhausted quota stranded the agent on the fallback voice until the voice
+# line was restarted — and restarting it kills the Claude session running under
+# it. Topping the credits back up could not recover it. Now it heals itself.
+ELEVEN_RETRY_AFTER_SECONDS = 300
 
 # ElevenLabs audio: mp3_44100_128, decoded locally to PCM
 ELEVEN_SAMPLE_RATE = 44100
@@ -104,10 +117,19 @@ class Mouth:
         self._speaking = False
         self._http = httpx.AsyncClient(timeout=30.0)
         self._playback_task: asyncio.Task | None = None
+        # One output stream, held open across sentences. See _play_pcm.
+        self._stream: sd.OutputStream | None = None
+        self._stream_key: tuple | None = None  # (device, sample_rate)
+        # Set once CoreAudio wedges. The HAL mutex stays held for the life of
+        # the process, so every later open would hang too. Stop trying.
+        self._audio_wedged = False
         self._on_speaking_change = None  # callback(bool) for ducking
-        # Latched off after an auth failure — a bad/unscoped key can't recover
-        # mid-session, and retrying costs a round trip before every sentence.
-        self._eleven_disabled = False
+        # Backed off after an auth failure rather than latched off for good.
+        # A bad key genuinely cannot recover, but an EXHAUSTED QUOTA returns the
+        # same 401 and recovers the moment credits are topped up — so a permanent
+        # latch was wrong. Holds the monotonic time to retry ElevenLabs after;
+        # 0.0 means "use it now".
+        self._eleven_retry_at = 0.0
 
     @property
     def is_speaking(self) -> bool:
@@ -158,16 +180,21 @@ class Mouth:
 
     async def _synthesize(self, text: str) -> tuple[bytes, int]:
         """Try ElevenLabs first, fall back to Kokoro."""
-        if ELEVENLABS_API_KEY and not self._eleven_disabled:
+        if ELEVENLABS_API_KEY and time.monotonic() >= self._eleven_retry_at:
             try:
-                return await self._elevenlabs_tts(text), ELEVEN_SAMPLE_RATE
+                out = await self._elevenlabs_tts(text), ELEVEN_SAMPLE_RATE
+                if self._eleven_retry_at:
+                    print("[mouth] ElevenLabs is back — the agent's own voice is restored.")
+                    self._eleven_retry_at = 0.0
+                return out
             except httpx.HTTPStatusError as e:
                 if e.response.status_code in (401, 403):
-                    self._eleven_disabled = True
+                    self._eleven_retry_at = time.monotonic() + ELEVEN_RETRY_AFTER_SECONDS
                     print(
                         f"[mouth] ElevenLabs auth rejected ({e.response.status_code}) — "
-                        "using Kokoro for the rest of this session. "
-                        "Check the API key's text_to_speech permission."
+                        f"falling back to Kokoro ({KOKORO_VOICE}) and retrying in "
+                        f"{ELEVEN_RETRY_AFTER_SECONDS}s. Usually an exhausted quota; "
+                        "if it persists, check the key's text_to_speech permission."
                     )
                 else:
                     print(f"[mouth] ElevenLabs failed, falling back to Kokoro: {e}")
@@ -243,84 +270,128 @@ class Mouth:
         resp.raise_for_status()
         return resp.content
 
-    async def _teardown_stream(self, stream, loop):
-        """Close an output stream without risking a CoreAudio deadlock.
+    # Ceiling on any single CoreAudio call. Opening a device or writing a 50ms
+    # block takes milliseconds; anything past this means CoreAudio is wedged.
+    AUDIO_CALL_TIMEOUT_S = 5.0
 
-        THIS IS THE HANG. Diagnosed 2026-09-18 by sampling a wedged process that
-        had been stuck for 8h42m. Every single sample sat in the same place:
+    async def _audio_call(self, fn, what: str):
+        """Run a blocking PortAudio call off the event loop, with a timeout.
 
-            stream.stop() -> PortAudio -> AudioOutputUnitStop
-              -> CoreAudio -> HALB_Mutex::Lock()
-                -> _pthread_mutex_firstfit_lock_slow
-
-        A plain `stream.stop()` on macOS waits for CoreAudio's IO thread to
-        finish. Called straight from the event loop thread, mid-playback, that
-        can deadlock against the mutex the IO thread already holds. When it does,
-        it never returns — no exception, no traceback, nothing in crash.log.
-        The app just stops being alive, which is exactly what Bobby kept seeing.
-
-        Three defences here:
-          1. `abort()` when we were interrupted. It drops buffered audio instead
-             of waiting for it to drain, which is what we want on a barge-in and
-             is far less deadlock-prone than `stop()`.
-          2. Run it in a worker thread, never on the event loop.
-          3. Put a timeout on it. If CoreAudio wedges anyway we leak one thread,
-             which is survivable — the voice line stays up and says so.
+        Returns True on success. On a timeout, latches _audio_wedged: the HAL
+        mutex is held for good at that point, so the worker thread is leaked
+        and no further audio is attempted. The event loop stays free, which
+        means push-to-talk, typed input and the brain all keep working.
         """
-        interrupted = self._cancelled
+        loop = asyncio.get_running_loop()
+        try:
+            await asyncio.wait_for(
+                loop.run_in_executor(None, fn), timeout=self.AUDIO_CALL_TIMEOUT_S
+            )
+            return True
+        except asyncio.TimeoutError:
+            self._audio_wedged = True
+            self._stream = None
+            self._stream_key = None
+            print(f"\n[mouth] CoreAudio wedged during {what} — voice is OFF until "
+                  "the voice line is restarted. Typing still works.", flush=True)
+            return False
+        except Exception as e:
+            print(f"\n[mouth] {what} failed: {type(e).__name__}: {e}", flush=True)
+            return False
+
+    async def _close_stream(self):
+        """Close the held stream. abort(), never stop(), and never on the loop."""
+        stream, self._stream, self._stream_key = self._stream, None, None
+        if stream is None:
+            return
 
         def _shutdown():
             try:
-                if interrupted:
-                    stream.abort()
-                else:
-                    stream.stop()
+                stream.abort()
             finally:
                 stream.close()
 
-        try:
-            await asyncio.wait_for(loop.run_in_executor(None, _shutdown), timeout=5.0)
-        except asyncio.TimeoutError:
-            # Deliberately not re-raised. A stuck speaker must not take the
-            # whole voice line with it.
-            print("\n[mouth] audio stream teardown timed out after 5s — "
-                  "CoreAudio is wedged. Voice line staying up.", flush=True)
-        except Exception as e:
-            print(f"\n[mouth] stream teardown failed: {type(e).__name__}: {e}", flush=True)
+        await self._audio_call(_shutdown, "stream close")
+
+    async def _ensure_stream(self, sample_rate: int) -> bool:
+        """Have an open, started stream for this device and rate.
+
+        THE HANG, PART TWO. Diagnosed 2026-10-01 by sampling a process wedged
+        mid-reply (state stuck on "thinking"). The 2026-09-18 fix moved stop()
+        into a worker thread with a timeout, and that thread did wedge, exactly
+        as before:
+
+            worker:    stream.stop() -> AudioOutputUnitStop -> HALB_Mutex::Lock
+            IO thread: PortAudio startStopCallback -> AudioUnitGetProperty
+                         -> recursive_mutex::lock          (each waits on the other)
+
+        The timeout fired and the line "stayed up" — then the NEXT sentence
+        constructed a new OutputStream on the event loop thread, and that
+        blocked in Pa_OpenStream -> HALB_Mutex::Lock forever. Whole app frozen.
+
+        Two changes kill it:
+          1. Keep ONE stream open across sentences. The deadlock lives in
+             PortAudio's start/stop path, and opening and stopping a stream per
+             sentence ran that path dozens of times a conversation. Now it runs
+             once at startup and again only when the device or rate changes.
+          2. Every PortAudio call that can block goes through _audio_call: off
+             the event loop, with a timeout.
+        """
+        if self._audio_wedged:
+            return False
+        key = (current_output_device(), sample_rate)
+        if self._stream is not None and self._stream_key == key:
+            return True
+        await self._close_stream()
+        if self._audio_wedged:
+            return False
+
+        block_size = int(sample_rate * 0.05)  # 50ms blocks
+        holder = {}
+
+        def _open():
+            stream = sd.OutputStream(
+                samplerate=sample_rate,
+                channels=1,
+                dtype="int16",
+                blocksize=block_size,
+                device=key[0],
+            )
+            stream.start()
+            holder["stream"] = stream
+
+        if not await self._audio_call(_open, "stream open"):
+            return False
+        self._stream = holder["stream"]
+        self._stream_key = key
+        return True
 
     async def _play_pcm(self, pcm_data: bytes, sample_rate: int):
         """Play PCM through speakers, feeding waveform to signal bus."""
         if not pcm_data or self._cancelled:
             return
+        if not await self._ensure_stream(sample_rate):
+            return
 
         samples = np.frombuffer(pcm_data, dtype=np.int16)
         block_size = int(sample_rate * 0.05)  # 50ms blocks
-        loop = asyncio.get_event_loop()
+        stream = self._stream
 
-        stream = sd.OutputStream(
-            samplerate=sample_rate,
-            channels=1,
-            dtype="int16",
-            blocksize=block_size,
-            device=current_output_device(),
-        )
-        stream.start()
+        offset = 0
+        while offset < len(samples) and not self._cancelled:
+            end = min(offset + block_size, len(samples))
+            block = samples[offset:end]
+            # write() blocks until there is room in the buffer, which is the
+            # pacing. It runs in a worker so a wedge cannot freeze the loop.
+            if not await self._audio_call(
+                lambda b=block: stream.write(b.reshape(-1, 1)), "stream write"
+            ):
+                return
 
-        try:
-            offset = 0
-            while offset < len(samples) and not self._cancelled:
-                end = min(offset + block_size, len(samples))
-                block = samples[offset:end]
-                stream.write(block.reshape(-1, 1))
+            # Feed signal bus with this block
+            signals.write_waveform(block.tobytes())
 
-                # Feed signal bus with this block
-                signals.write_waveform(block.tobytes())
-
-                offset = end
-                # Yield to event loop
-                await asyncio.sleep(0)
-        finally:
-            await self._teardown_stream(stream, loop)
+            offset = end
 
         if self._cancelled:
             self._cancelled = False
@@ -331,4 +402,5 @@ class Mouth:
             self._on_speaking_change(speaking)
 
     async def close(self):
+        await self._close_stream()
         await self._http.aclose()

@@ -19,7 +19,13 @@ voice-line/.voice_waveform
 voice-line/.voice_alert
 voice-line/.voice_line.lock
 voice-line/.voice_loading_pid
+voice-line/.voice_session
+voice-line/.voice-output-device
 voice-line/crash.log
+
+# Housekeeping output — archived transcripts are the user's own conversations
+# and the log is machine-local. Neither belongs in the repo.
+voice-line/logs/
 __pycache__/
 *.pyc
 
