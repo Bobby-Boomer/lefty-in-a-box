@@ -51,6 +51,18 @@ SESSION_FILE = Path(__file__).with_name(".voice_session")
 # fresh and let the vault carry the history — the vault is the memory, not the
 # transcript, and dragging a week-old context blob into every boot is worse.
 #
+# Size cap on the live transcript. Matches retire-fat-session.sh (12MB; the
+# 2026-10-08 compaction bit at 22MB).
+#
+# CRITICAL: both caps are checked at the START OF EVERY TURN, not only at boot.
+# Until 2026-10-13 they lived in _load_session() and the boot script, so a voice
+# line left running for days never re-checked either one. The process ran from
+# 10-09 to 10-13, the session reached 97 hours and a 45MB transcript, every turn
+# dragged ~650K tokens of context, and the user was hitting the key to interrupt
+# turns that had simply gone slow.
+SESSION_MAX_BYTES = 12 * 1024 * 1024
+TRANSCRIPTS_DIR = Path.home() / ".claude" / "projects"
+
 # Measured from the session's BIRTH, never from the last turn. Until 2026-10-08
 # the timestamp was re-stamped on every save, so this window slid forward with
 # each turn and a session could never expire while someone kept talking to it.
@@ -121,6 +133,30 @@ class Brain:
             )
         except OSError:
             pass
+    def _session_too_big(self) -> bool:
+        """True if the live session's transcript is past SESSION_MAX_BYTES.
+
+        Searched by id rather than by project folder: the project folder name
+        is derived from the cwd string, and on a case-insensitive volume two
+        spellings of the same directory give two different folder names.
+        """
+        if not self._session_id:
+            return False
+        try:
+            for path in TRANSCRIPTS_DIR.glob(f"*/{self._session_id}.jsonl"):
+                if path.stat().st_size > SESSION_MAX_BYTES:
+                    return True
+        except OSError:
+            pass
+        return False
+
+    def _should_retire(self) -> bool:
+        """Session is past its age or size cap and the next turn starts clean."""
+        if not self._session_id:
+            return False
+        too_old = (time.time() - self._session_started_at) > SESSION_MAX_AGE_S
+        return too_old or self._session_too_big()
+
 
     def _clear_session(self) -> None:
         self._session_id = None
@@ -187,6 +223,13 @@ class Brain:
             # Release the prompt generator even if the turn raised, or it
             # would sit waiting on an event nobody is left to set.
             done.set()
+        # Turn boundary is the only safe place to rotate: nothing is mid-reply.
+        if self._should_retire():
+            self._clear_session()
+            if on_sentence:
+                await on_sentence(
+                    "Quick heads up, I'm starting a fresh session, so remind me where we were."
+                )
         self._warmed = True
 
     async def turn(self, user_text: str, on_sentence=None) -> str:

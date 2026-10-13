@@ -8,7 +8,7 @@ All three exist because of real failures, on a real machine, over months of dail
 
 | Guard | Where | What it catches |
 |---|---|---|
-| **Birth-based session expiry**, 12h | `voice-line/brain.py` | a conversation quietly living for days |
+| **Birth-based session expiry**, 12h, checked every turn | `voice-line/brain.py` | a conversation quietly living for days |
 | **Size retirement**, 12 MB | `voice-line/retire-fat-session.sh` | a *heavy* day that hits the context limit in hours |
 | **Archive then delete**, 14d / 90d | `voice-line/prune-transcripts.sh` | `~/.claude/projects` silently filling your disk |
 
@@ -55,6 +55,17 @@ already over **12 MB**, the pointer is retired and you begin clean. Tune with `-
 > **Why it runs at start-up and not whenever:** a running voice line rewrites `.voice_session` on
 > every single turn. Deleting that file while the app is up accomplishes nothing — it reappears
 > within seconds. It has to happen after the old process is gone and before the new one reads it.
+
+### Both caps are also checked before every turn
+
+**Symptom:** you leave the voice line running for days, and it gets slower and slower until you are
+hitting the talk key to cut off answers that are not wrong, just late.
+
+The age and size caps used to be checked only at start-up. A voice line that never restarts never
+re-checks them: one ran four days, its session hit 97 hours and a 45 MB transcript, and every turn
+was dragging about 650K tokens of context. Now `brain.py` checks both at the start of each turn,
+before anything is spoken. Past either cap, it says it is starting fresh and takes the turn in a
+new session. The boot script stays as the first line of defence.
 
 **You lose nothing that matters.** Your memory folder is the memory. The transcript is just the raw
 log of how you got there.
