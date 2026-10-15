@@ -119,6 +119,50 @@ The bridge only answers while that terminal window is open. Two ways to make it 
 
 ---
 
+## Scheduled reminders
+
+**The symptom this fixes:** you ask your agent to remind you about something next
+Tuesday. It says it will. Tuesday comes and nothing happens.
+
+Nothing is broken. A conversation has no future — when the window closes there is
+no process left to fire anything. So the reminder has to live on disk, outside the
+agent, with the operating system waking it up.
+
+**Turn it on, once:**
+
+```bash
+bash telegram/install-reminders.sh          # checks daily at 9:00 AM
+bash telegram/install-reminders.sh 7 30     # or pick your own time
+```
+
+macOS only. On Linux use cron instead — `0 9 * * * /full/path/to/telegram/remind.sh`.
+On Windows, Task Scheduler running it through Git Bash or WSL.
+
+**The queue is `telegram/reminders.tsv`.** One reminder per line, tab separated:
+
+```
+2026-10-27	0	Domain renews today. Confirm the card went through.
+2026-10-29	14	Still haven't filed the EIN paperwork? Do it now.
+```
+
+`0` fires once and deletes itself. Any other number is how many days until it comes
+back. Your agent can write to this file, and so can you — nothing caches it, nothing
+needs restarting.
+
+**Three behaviors worth knowing:**
+
+- **Overdue still fires.** If the machine was asleep on the day, the reminder goes
+  out at the next run rather than being silently missed.
+- **Recurring re-arms from the day it fired**, not from the date it was supposed to.
+  Otherwise one missed reminder fires every day until it catches up.
+- **A failed send keeps the reminder armed.** A reminder that vanishes because the
+  network blipped is worse than no reminder at all.
+
+Log is `telegram/remind.log`. Test without waiting for tomorrow: add a line dated
+today and run `bash telegram/remind.sh`.
+
+---
+
 ## Files it owns
 
 | Path | What |

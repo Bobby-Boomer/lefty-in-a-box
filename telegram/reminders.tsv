@@ -1,0 +1,15 @@
+# Your agent's reminder queue. It texts you on Telegram when something is due.
+#
+# Format, tab-separated:   due<TAB>repeat_days<TAB>message
+#   due          YYYY-MM-DD
+#   repeat_days  0 = fire once, then this line is deleted
+#                N = recurring, re-armed N days after it fires
+#
+# Lines starting with # are ignored. Edit this file any time; nothing caches it.
+# The separators must be real TAB characters, not spaces.
+#
+# Examples — delete these and write your own:
+#
+# 2030-01-01	0	Domain renews today. Log in and confirm the card went through.
+# 2030-01-01	14	Still haven't filed the paperwork? Do it now.
+# 2030-01-01	7	Weekly: review the open items in Active Priorities.
