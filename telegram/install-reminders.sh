@@ -41,6 +41,35 @@ if [ ! -s "$HOME/.agent-telegram/token" ]; then
   exit 1
 fi
 
+# macOS denies launchd background agents access to ~/Documents, ~/Desktop and
+# ~/Downloads unless you grant Full Disk Access by hand. A job pointed at a
+# script in one of those folders dies with exit 127 and "can't open input
+# file", even though the script is right there and executable — and it fails
+# silently at 9 AM, which is the worst possible way for a reminder to fail.
+#
+# So if the kit was installed into a protected folder, say so now rather than
+# letting the user find out when a reminder never arrives. Found 2026-10-15.
+case "$HERE" in
+  "$HOME/Documents"/*|"$HOME/Desktop"/*|"$HOME/Downloads"/*)
+    cat <<WARN
+Heads up — this kit is installed under a folder macOS protects:
+  $HERE
+
+Scheduled jobs cannot read scripts there, so reminders would silently never
+fire. Two ways forward:
+
+  1. Grant Full Disk Access to /bin/bash
+     System Settings > Privacy & Security > Full Disk Access > + > press
+     Cmd-Shift-G and enter /bin/bash. Then re-run this installer.
+
+  2. Move the kit somewhere unprotected, for example ~/agent, and re-run.
+
+Option 2 is the cleaner one. Full Disk Access on a shell is broad.
+WARN
+    exit 1
+    ;;
+esac
+
 chmod +x "$SCRIPT"
 mkdir -p "$HOME/Library/LaunchAgents"
 
