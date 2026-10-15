@@ -116,6 +116,27 @@ The bridge only answers while that terminal window is open. Two ways to make it 
 | `ignored message from chat ...` in the window | Something is messaging your bot from a chat that is not yours. Working as designed. |
 | `claude exited 1` | Claude Code is not on the PATH for that shell. Run `claude --version` in the same window. |
 | Replies arrive but it cannot edit files | `PERMISSION_MODE` is `default`. See above. |
+| Your bot suddenly asks what to call it | You ran the bridge from a **second copy** of the kit — a fresh clone, or a test checkout. See below. |
+
+### `--once` is not a dry run
+
+It looks like a test flag. It is not. `--once` uses your real token, really
+answers a message from your phone, advances the bookmark so that message is gone
+for good, and pairs the bot to whoever spoke first.
+
+The nasty version: you clone the kit somewhere to check something, run
+`--once` from the clone, and the clone answers your phone. A fresh clone has no
+`agent.md`, so it boots as the **installer** — and your agent, who knows you,
+appears to have forgotten your name.
+
+Nothing is damaged and nothing leaked. But you did lose one incoming message,
+and you got a reply you did not ask for.
+
+To test a second copy without letting it near your credentials:
+
+```bash
+HOME=$(mktemp -d) python3 telegram/bridge.py --once
+```
 
 ---
 

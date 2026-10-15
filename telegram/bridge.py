@@ -16,7 +16,19 @@ leak them:
     session            the Claude session id, so the thread keeps its memory
 
 Run:  python3 telegram/bridge.py          (long-poll forever)
-      python3 telegram/bridge.py --once   (handle one batch and exit, for testing)
+      python3 telegram/bridge.py --once   (handle one batch and exit)
+
+--once IS NOT A DRY RUN. It reads your real token, answers a real message from
+your phone, advances the getUpdates offset so that message is gone for good, and
+pairs allowed_chat_id to whoever spoke first. Running it from a second copy of
+the kit to "see if it works" sends a reply from THAT copy — which, in a fresh
+clone with no agent.md, means the installer answers your phone asking what to
+call it. Learned the hard way, 2026-10-15.
+
+To test safely, point HOME at a throwaway directory so it cannot touch your
+live credentials:
+
+    HOME=$(mktemp -d) python3 telegram/bridge.py --once
 
 Setup, start to finish: telegram/README.md
 """
