@@ -98,9 +98,10 @@ Then try the actual move:
 
 Say these out loud before someone discovers them the hard way.
 
-- **Native dialogs need a human.** The macOS "allow camera" bubble, Windows file pickers, print dialogs —
-  these are drawn by the operating system, not the page. The AI cannot click them. (`lefty-chrome.sh`
-  passes `--use-fake-ui-for-media-stream` purely to dodge the camera one, which otherwise hangs forever.)
+- **Native dialogs need a human.** The macOS "allow camera" bubble, print dialogs, OS confirmation
+  sheets — these are drawn by the operating system, not the page, so the AI cannot click them.
+  (`lefty-chrome.sh` passes `--use-fake-ui-for-media-stream` purely to dodge the camera one, which
+  otherwise hangs forever.) **The one big exception is file uploads — see below.**
 - **Some buttons only answer to a real click.** A synthetic click dispatched from page JavaScript does
   nothing on plenty of modern apps — Google surfaces especially. Real input events at real coordinates
   work. If a click "succeeds" and nothing happens, that is this.
@@ -108,6 +109,42 @@ Say these out loud before someone discovers them the hard way.
   be attached to directly, as their own target.
 - **It is not autonomous.** It drives the browser you started, in the window you are watching. Close the
   window and it stops.
+
+---
+
+## Uploading a file — the one native dialog you can get around
+
+**The symptom:** your AI fills in every field on a form, gets to "Choose file" or "Browse", and stops
+dead. It will tell you it clicked the button. Nothing happened. This is the single most common place an
+AI driving a browser gets stuck.
+
+**Why:** that button opens the operating system's file dialog. It is not part of the web page, so
+nothing running inside the browser can reach it.
+
+**The way around it:** hand the file straight to the page's hidden `<input type=file>`, which is what
+the dialog would have done anyway. The page cannot tell the difference.
+
+```
+node browser/cdp-upload.mjs <urlSubstring> <path> [path...] [-r] [--dry] [--selector <css>]
+```
+
+**Always `--dry` first.** You are handing files to a website. Look at the list before you send it.
+
+```
+node browser/cdp-upload.mjs "drive.google.com" ~/Documents/report.pdf --dry
+```
+
+Three things worth knowing before you use it in anger:
+
+- **Open the upload dialog first.** Most sites do not create the file input until you click their
+  Upload button. "No element matching..." usually means the input does not exist yet, not that the
+  tool is broken.
+- **`--selector` is for pages with more than one file input.** By default the first input on the page
+  is used, which is right almost everywhere. On a page with several — say an avatar picker and a
+  document picker on the same form — the upload will succeed, report success, and put your file in
+  the wrong field. The tool warns when it sees more than one input and no `--selector`. YouTube
+  Studio is a real example: its thumbnail picker is `input#file-loader`.
+- **Do not reload or navigate that tab while it transfers.** A reload aborts every file in the queue.
 
 ---
 

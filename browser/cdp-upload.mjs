@@ -11,10 +11,20 @@
 // <input type=file>, which is what the picker would have done anyway. The page
 // cannot tell the difference and its upload starts normally.
 //
-//   node browser/cdp-upload.mjs <urlSubstring> <path> [path...] [-r] [--dry]
+//   node browser/cdp-upload.mjs <urlSubstring> <path> [path...] [-r] [--dry] [--selector <css>]
 //
 //   -r / --recursive   include files in subdirectories (flattened — see below)
 //   --dry              list exactly what would be sent, send nothing
+//   --selector <css>   which file input to use, when the page has more than one
+//
+// About --selector. By default this takes the FIRST <input type=file> on the page,
+// which is right almost everywhere, because most pages have exactly one. It is
+// wrong on pages that have several — a profile form with both an avatar picker and
+// a document picker, for instance. The symptom is nasty: the upload succeeds, the
+// script reports success, and the file lands in the wrong field. Found 2026-10-20
+// on YouTube Studio, whose thumbnail picker is specifically `input#file-loader`.
+// When in doubt, run --dry and inspect the page first; pass --selector only when
+// you have actually looked and found more than one input.
 //
 // ALWAYS --dry first. You are handing files to a website; look at the list.
 //
@@ -31,13 +41,17 @@ import { basename, join, resolve } from 'node:path';
 const PORT = process.env.LEFTY_CHROME_PORT || '9222';
 const argv = process.argv.slice(2);
 const match = argv.shift();
-const paths = argv.filter((a) => !a.startsWith('-'));
+const selValueIdx = argv.indexOf('--selector') + 1;
+const paths = argv.filter((a, i) => !a.startsWith('-') && !(selValueIdx > 0 && i === selValueIdx));
 const flags = argv.filter((a) => a.startsWith('-'));
 const RECURSIVE = flags.includes('-r') || flags.includes('--recursive');
 const DRY = flags.includes('--dry');
+// --selector takes a value, so it is read off the raw argv rather than the flag list.
+const selIdx = argv.indexOf('--selector');
+const SELECTOR = selIdx !== -1 ? argv[selIdx + 1] : 'input[type=file]';
 
 if (!match || !paths.length) {
-  console.error('usage: cdp-upload.mjs <urlSubstring> <path> [path...] [-r] [--dry]');
+  console.error('usage: cdp-upload.mjs <urlSubstring> <path> [path...] [-r] [--dry] [--selector <css>]');
   process.exit(1);
 }
 
@@ -111,11 +125,19 @@ await new Promise((r, j) => { ws.addEventListener('open', r); ws.addEventListene
 
 await send('DOM.enable');
 const { root } = await send('DOM.getDocument', { depth: -1, pierce: true });
-const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[type=file]' });
+const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: SELECTOR });
 if (!nodeId) {
-  console.error('No <input type=file> on this page. Open the upload dialog first —');
+  console.error(`No element matching "${SELECTOR}" on this page. Open the upload dialog first —`);
   console.error('most sites only create the input after you click their Upload button.');
   process.exit(5);
+}
+
+// Say which input was used. Silence here is how a file ends up in the wrong field
+// on a multi-input page without anyone noticing.
+const { nodeIds: allInputs } = await send('DOM.querySelectorAll', { nodeId: root.nodeId, selector: 'input[type=file]' });
+if (allInputs && allInputs.length > 1 && selIdx === -1) {
+  console.error(`[WARNING] this page has ${allInputs.length} file inputs and no --selector was given.`);
+  console.error('          Using the first one. If the file lands in the wrong field, that is why.');
 }
 
 await send('DOM.setFileInputFiles', { nodeId, files });
