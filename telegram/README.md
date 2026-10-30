@@ -53,6 +53,34 @@ python3 telegram/bridge.py
 
 Leave that window open. It is now listening.
 
+### 3b. Keep it running — do this, or your phone line will die on you
+
+**The symptom, and it is a nasty one:** you close that terminal, log out, or reboot, and the bridge
+stops. It does not warn you. Your bot just goes quiet, and you find out the next time you message it
+from somewhere else — which is exactly when you cannot do anything about it.
+
+On macOS, one command fixes it for good:
+
+```bash
+bash telegram/install-bridge.sh
+```
+
+That writes a launchd job with **KeepAlive**, so the bridge starts when you log in and restarts itself
+if it ever exits. Check on it any time:
+
+```bash
+launchctl list | grep com.agent.telegram
+```
+
+Turn it off with `launchctl unload ~/Library/LaunchAgents/com.agent.telegram.plist`.
+
+**Linux:** a systemd `--user` unit with `Restart=always`. **Windows:** Task Scheduler, trigger "at log
+on", with restart-on-failure.
+
+> **If the kit lives in `~/Documents`, `~/Desktop` or `~/Downloads`, the installer will stop and tell
+> you.** macOS blocks background jobs from reading those folders, so the bridge would crash-loop
+> instead of answering. Move the kit somewhere like `~/agent` and re-run.
+
 ### 4. Say hello
 
 Open the chat with your new bot and send it anything.
