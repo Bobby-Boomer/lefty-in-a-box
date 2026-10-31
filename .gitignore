@@ -35,3 +35,6 @@ lefty.config.json
 # The agent's boot file, written by install/finish-setup.sh at the end of setup.
 # Theirs to edit, and gitignored so `git pull` never fights with it.
 agent.md
+
+# Notes between a member's agents (skills/second-agent.md). Theirs, never shipped.
+handoff/
