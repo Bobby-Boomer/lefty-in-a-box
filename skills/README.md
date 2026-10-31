@@ -15,3 +15,4 @@ it follows the file. Open any of them and edit it; it is yours.
 | `business-brain.md` | "learn my business" |
 | `mobile-bridge.md` | "let me talk to you from my phone while I'm driving" |
 | `telegram-bridge.md` | "set me up on Telegram so I can text you" |
+| `second-agent.md` | "set me up a second agent for my newsletter" |
