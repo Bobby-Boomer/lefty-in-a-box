@@ -142,6 +142,38 @@ the real voice comes back.
 
 ---
 
+## The line sticks on "listening" and never answers
+
+**The symptom:** you say something, the state goes to listening, and nothing ever comes back. The
+mic looks dead. Nothing crashes, nothing prints, and **nothing lands in `crash.log`** — so there is
+no evidence anything went wrong. The only way out is Ctrl-C and a restart.
+
+**It is not the mic and it is not the model.** The Claude Agent SDK spawns the Claude Code CLI,
+sends it an initialize control request, and then waits for the answer in
+`query.py:_send_control_request` with **no timeout at all**. If that subprocess never replies, the
+wait never ends and the turn never starts. The prime suspect is MCP server startup — the CLI holds
+its reply until its servers are up, and a machine with several configured can stall there.
+
+**The fix, in `brain.py`:** the wait for the **first** message of a turn is now bounded by
+`FIRST_OUTPUT_TIMEOUT_S` (default 90 seconds, override with `VOICE_FIRST_OUTPUT_TIMEOUT_S`). On
+timeout it raises `TurnStalled`, which `main.py` already handles — you hear *"That one broke on my
+end"* instead of silence, and you simply say it again.
+
+**Only the first message is bounded, on purpose.** Once any output arrives the turn runs untimed. A
+legitimate turn that drives a browser or renders video can run for many minutes, and cutting that
+off would be worse than the bug.
+
+### How to tell this hang from an ordinary interruption
+
+`crash.log` fills up with `[turn-cancelled]` entries and **most of them are harmless** — every time
+you talk over a reply, that is a cancelled turn. On the author's machine 223 of 254 were exactly
+that. **Read the stack, not the count:**
+
+- cancelled inside **`receive_messages()`** → you barged in. Normal. Ignore it.
+- cancelled inside **`query.initialize()` / `_send_control_request`** → **this bug.**
+
+---
+
 ## Two bash traps banked here, so you do not pay for them twice
 
 These cost real debugging time while writing the scripts above.

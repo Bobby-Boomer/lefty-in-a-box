@@ -78,6 +78,41 @@ SESSION_MAX_AGE_S = 12 * 60 * 60
 # voice line falls over. Give it real headroom.
 MAX_BUFFER_SIZE = int(os.environ.get("VOICE_MAX_BUFFER_SIZE", 64 * 1024 * 1024))
 
+# THE SYMPTOM: you speak, the line sits on "listening" forever, and it never
+# answers. The mic looks dead. Nothing crashes, nothing is printed, and nothing
+# lands in crash.log, so there is no evidence it went wrong at all. The only
+# way out is Ctrl-C and a restart.
+#
+# Seen 23 times on the author's machine between 2026-09-21 and 2026-11-06 before
+# anyone worked out what it was. (The log is full of "turn-cancelled" entries,
+# but 223 of 254 of those are ordinary barge-ins — you talking over the reply.
+# The hang has a different stack and that is how you tell them apart: it is
+# cancelled inside `query.initialize()`, not inside `receive_messages()`.)
+#
+# THE CAUSE: the Claude Agent SDK spawns the Claude Code CLI, sends it an
+# initialize control request, then does `await event.wait()` in
+# `query.py:_send_control_request` with NO TIMEOUT. If the subprocess never
+# answers, that await never returns. Prime suspect is MCP server startup — the
+# CLI holds its reply until its servers are up, and a machine with several
+# configured can stall there.
+#
+# THE FIX: bound the wait for the FIRST message only. Once anything comes back,
+# the turn runs untimed — a legitimate turn that drives a browser or renders
+# video can run for many minutes, and killing that would be worse than the bug.
+#
+# DO NOT DELETE THIS AS REDUNDANT. There is no timeout upstream to fall back on.
+FIRST_OUTPUT_TIMEOUT_S = float(os.environ.get("VOICE_FIRST_OUTPUT_TIMEOUT_S", 90))
+
+
+class TurnStalled(Exception):
+    """The CLI never produced a first message.
+
+    Deliberately a plain Exception. main.py catches BaseException and speaks an
+    apology, and `turn()` retries once on Exception when nothing has reached the
+    speaker yet. Making this a CancelledError instead would take the whole voice
+    line down, which is the exact behaviour this fixes.
+    """
+
 # Keep the Claude Code system prompt (tools, file access) and append voice rules.
 SYSTEM_PROMPT = {
     "type": "preset",
@@ -257,11 +292,39 @@ class Brain:
         buffer = ""
         done = asyncio.Event()
 
+        # Iterated by hand rather than with `async for`, so the wait for the
+        # FIRST message can be bounded. See FIRST_OUTPUT_TIMEOUT_S for the
+        # hang this prevents — do not simplify it back.
+        stream = query(
+            prompt=self._stream_prompt(user_text, done),
+            options=self._options(),
+        ).__aiter__()
+        awaiting_first = True
+
         try:
-            async for msg in query(
-                prompt=self._stream_prompt(user_text, done),
-                options=self._options(),
-            ):
+            while True:
+                try:
+                    if awaiting_first:
+                        msg = await asyncio.wait_for(
+                            stream.__anext__(), timeout=FIRST_OUTPUT_TIMEOUT_S
+                        )
+                        awaiting_first = False
+                    else:
+                        msg = await stream.__anext__()
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    # Close the generator before raising, or its transport task
+                    # group is left running and the next turn inherits the mess.
+                    try:
+                        await stream.aclose()
+                    except BaseException:
+                        pass
+                    raise TurnStalled(
+                        f"no response from the Claude CLI in "
+                        f"{FIRST_OUTPUT_TIMEOUT_S:.0f}s — it never finished starting up"
+                    ) from None
+
                 if isinstance(msg, ResultMessage):
                     self._save_session(msg.session_id)
                     done.set()
