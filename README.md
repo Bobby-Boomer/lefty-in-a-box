@@ -65,10 +65,38 @@ You pick which pieces you want. Memory alone is a perfectly good answer.
 
 ## Install
 
-**Step 1 — get Claude Code.** Not the Claude app and not the website. Claude Code lives in your terminal and
-can build things on your computer. Follow Anthropic's installer at
-[claude.com/claude-code](https://claude.com/claude-code), then run `claude` once and sign in with your
-Claude account.
+**Step 1 — get Claude Code.** Not the Claude app and not the website. **The Claude desktop app has the
+same name but does not give your terminal a `claude` command** — that mix-up is the most common install
+failure we have seen. Claude Code lives in your terminal and can build things on your computer. On a Mac or
+Linux, paste this into Terminal (other options at [claude.com/claude-code](https://claude.com/claude-code)):
+
+```
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Then **close the Terminal window and open a new one** — an open window never sees newly installed
+commands — run `claude` once, and sign in with your Claude account. Still "command not found"? Run
+`echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc` and open a new window.
+
+**Mac, first time ever using Terminal? Expect one box before anything else.** The first command that
+touches `git` makes macOS say *"No developer tools were found, requesting install"* and open an
+**Install Command Line Developer Tools** window. Click Install and let it run. **It will claim something
+like "About 10 hours, 4 seconds remaining." Ignore that number** — it is wrong every time and it
+usually finishes in a few minutes. This is Apple's installer, not ours, and it only happens once.
+
+**Mac, and you want voice? Get Homebrew too.** The voice piece installs its speech engine with it. Paste
+the line from [brew.sh](https://brew.sh), type your Mac password when asked (nothing shows while you type,
+that is normal), and **run the "Next steps" lines it prints at the end** — skip them and `brew` says
+"command not found" even though it is installed. Then open a new window. Copy commands from this page, not
+from a chat window: chat apps swap in curly quotes and the line fails.
+
+> **Homebrew has to go in its own Terminal window, not in the chat with your agent.** If you ask your
+> agent to install it for you, the command runs but then sits there forever. The reason: Homebrew stops
+> to ask for your Mac password, and **the agent's window cannot take a typed password** — that prompt
+> needs a real terminal you are sitting in front of. Nothing is broken and nothing is wrong with your
+> machine. Press **Cmd + Space**, type **Terminal**, press Enter, paste the brew.sh line into *that*
+> window, and type your password there. When it says **"Installation successful!"**, go back to your
+> agent and tell it you are done.
 
 **Before you paste, know what it is going to ask you.**
 
