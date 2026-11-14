@@ -78,6 +78,26 @@ Tell them what matters in one or two lines.
 **If `claude` is missing** — it cannot be, since you are running inside it, but
 if the check disagrees, trust the check and mention it.
 
+**If `claude_hint` is `not_on_path` or `desktop_app_only`, or `brew` is
+`not_on_path`**, run `./install/preflight.sh` without `--json` and show them the
+exact lines it prints. Those are the three traps from the first live Mac install
+with a new member (2026-11-13): the desktop app mistaken for Claude Code,
+`~/.local/bin` missing from PATH, and Homebrew's "Next steps" lines never run.
+Each one looks like "command not found" for a thing that is installed. **Always
+end with "close this window and open a new one"**, because an open Terminal
+window never picks up a PATH change.
+
+**If `brew` is `no` on a Mac and they want voice**, Homebrew comes first. Say it
+takes 5 to 10 minutes, asks for their Mac password once, and **shows nothing
+while they type the password**, which is the moment people think it froze. Get a
+yes, then have them paste the official line from brew.sh themselves (it needs
+their password, so they run it, not you). Tell them before it ends to **run the
+"Next steps" lines it prints**, then open a new window and re-run preflight.
+
+**Tell them to copy commands from the page, never from a chat window.** Meet
+and Zoom chat turn straight quotes curly and add spaces; the line looks right
+and fails.
+
 **If Python is missing or older than 3.10**, voice will not work. Say so, offer
 to continue without it, and offer to help install Python if they want voice.
 
