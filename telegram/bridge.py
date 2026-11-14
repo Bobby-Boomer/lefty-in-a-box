@@ -59,7 +59,23 @@ PERMISSION_MODE = os.environ.get("AGENT_TELEGRAM_PERMISSION_MODE", "default")
 
 TG_LIMIT = 4000          # Telegram caps a message at 4096 chars; leave headroom
 POLL_TIMEOUT = 50        # seconds held open by getUpdates long polling
-CLAUDE_TIMEOUT = 600     # seconds before a single reply is abandoned
+
+# CLAUDE_TIMEOUT was 600 and that was too short. The symptom you would notice: you
+# text the agent a real job, nothing comes back for ten minutes, and then it answers
+# "that one took too long and got cut off" — so the line looks broken even though
+# every message arrived and the agent was working the whole time.
+#
+# Two causes, both ordinary. A genuine agentic task routinely runs past ten minutes,
+# and every turn pays a startup tax reading its own notes before it begins. A loaded
+# machine stretches both.
+#
+# Raising the ceiling on its own makes it worse, not better: you then sit in silence
+# for half an hour instead of ten minutes. So the ceiling goes up AND the bridge
+# reports in while it works. Do not delete the heartbeat thinking it is noise —
+# silence is what made the old timeout feel like a dead line.
+CLAUDE_TIMEOUT = 1800    # seconds before a single reply is abandoned (30 min)
+HEARTBEAT_EVERY = 300    # seconds between "still working" pings while a turn runs
+TYPING_EVERY = 5         # Telegram's typing indicator expires after ~5s, so re-send
 
 
 def conf_read(name, default=None):
@@ -93,21 +109,51 @@ def send(chat_id, text):
         api("sendMessage", chat_id=chat_id, text=text[i:i + TG_LIMIT])
 
 
-def ask_agent(prompt):
+def run_watched(cmd, chat_id=None):
+    """Run one Claude turn, keeping the chat alive while it thinks.
+
+    subprocess.run() with a timeout says nothing for its whole duration, which is why
+    a long turn used to be indistinguishable from a dead bridge. This refreshes the
+    typing indicator and sends a short ping every HEARTBEAT_EVERY seconds, then still
+    raises TimeoutExpired at the ceiling so the caller's handling is unchanged.
+    """
+    p = subprocess.Popen(cmd, cwd=str(WORKDIR), stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, text=True)
+    started = time.time()
+    next_ping = HEARTBEAT_EVERY
+    while True:
+        try:
+            out, err = p.communicate(timeout=TYPING_EVERY)
+            return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+        except subprocess.TimeoutExpired:
+            waited = time.time() - started
+            if waited >= CLAUDE_TIMEOUT:
+                p.kill()
+                p.communicate()
+                raise
+            if chat_id:
+                try:
+                    api("sendChatAction", chat_id=chat_id, action="typing")
+                    if waited >= next_ping:
+                        send(chat_id, f"[bridge] still on it, {int(waited // 60)} min in.")
+                        next_ping += HEARTBEAT_EVERY
+                except Exception as e:      # a hiccup on the ping must never kill the turn
+                    print(f"heartbeat failed: {e}", flush=True)
+
+
+def ask_agent(prompt, chat_id=None):
     """Run one turn through Claude Code, keeping the same session across messages."""
     base = [CLAUDE, "-p", prompt, "--output-format", "json",
             "--permission-mode", PERMISSION_MODE]
     sid = conf_read("session")
     cmd = base + (["--resume", sid] if sid else [])
 
-    r = subprocess.run(cmd, cwd=str(WORKDIR), capture_output=True,
-                       text=True, timeout=CLAUDE_TIMEOUT)
+    r = run_watched(cmd, chat_id)
 
     if r.returncode != 0 and sid:
         # A stale session id is the usual cause. Drop it and take the turn fresh.
         (CONF / "session").unlink(missing_ok=True)
-        r = subprocess.run(base, cwd=str(WORKDIR), capture_output=True,
-                           text=True, timeout=CLAUDE_TIMEOUT)
+        r = run_watched(base, chat_id)
 
     if r.returncode != 0:
         return f"[bridge] claude exited {r.returncode}: {(r.stderr or '').strip()[:500]}"
@@ -146,9 +192,12 @@ def handle(msg):
     print(f"-> {text[:80]}", flush=True)
     api("sendChatAction", chat_id=chat_id, action="typing")
     try:
-        reply = ask_agent(text)
+        reply = ask_agent(text, chat_id)
     except subprocess.TimeoutExpired:
-        reply = "[bridge] that one took too long and got cut off. Try a smaller ask."
+        mins = CLAUDE_TIMEOUT // 60
+        reply = (f"[bridge] I ran past {mins} minutes on that and had to stop, so nothing "
+                 f"was finished. The ask was: \"{text[:120]}\". Break it into one step and "
+                 f"send that, or ask me at the terminal where there is no clock.")
     send(chat_id, reply)
     print(f"<- {reply[:80]}", flush=True)
 
