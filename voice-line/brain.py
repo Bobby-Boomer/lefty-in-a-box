@@ -121,6 +121,12 @@ SYSTEM_PROMPT = {
 }
 
 
+# Extra settings JSON handed to the CLI as --settings, or None (the default, which changes
+# nothing). The phone line uses it to switch a style plugin off for its own sessions. A
+# plugin that re-injects on every prompt cannot be turned off with an env var alone.
+EXTRA_SETTINGS: str | None = None
+
+
 class Brain:
     def __init__(self, cwd: str = None, can_use_tool=None):
         self._cwd = cwd or DEFAULT_CWD
@@ -209,6 +215,7 @@ class Brain:
             max_turns=max_turns,
             can_use_tool=self._can_use_tool,
             max_buffer_size=MAX_BUFFER_SIZE,
+            settings=EXTRA_SETTINGS,
         )
 
     @staticmethod

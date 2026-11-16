@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Lefty">
+<link rel="manifest" href="/manifest.json">
+<title>Lefty</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:-apple-system,system-ui,sans-serif;color:#d8ffe0;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  #viz{position:fixed;inset:0;width:100%;height:100%;border:0;pointer-events:none}
+  #log{position:fixed;left:14px;right:14px;top:calc(env(safe-area-inset-top) + 10px);font-size:15px;line-height:1.35;text-shadow:0 1px 3px #000;max-height:34vh;overflow:hidden}
+  #log div{margin:4px 0;opacity:.92}
+  #log .me{color:#9fd3ff}
+  #bar{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 18px);display:flex;align-items:center;justify-content:center;gap:22px}
+  #talk{width:108px;height:108px;border-radius:50%;border:3px solid #35ff7a;background:rgba(0,40,15,.55);color:#d8ffe0;font-size:15px;font-weight:700;touch-action:none}
+  #talk.rec{background:#c0233a;border-color:#ff8a9b}
+  #talk.busy{opacity:.55}
+  .small{width:52px;height:52px;border-radius:50%;border:2px solid #35ff7a88;background:rgba(0,0,0,.5);color:#d8ffe0;font-size:20px}
+  #status{position:fixed;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 136px);text-align:center;font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.8}
+  #typebox{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 140px);display:none;gap:8px}
+  #typebox input{flex:1;font-size:17px;padding:12px;border-radius:12px;border:1px solid #35ff7a88;background:#001a0a;color:#d8ffe0}
+  #typebox button{font-size:16px;padding:0 16px;border-radius:12px;border:0;background:#35ff7a;color:#001a0a;font-weight:700}
+  #ask{position:fixed;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 150px);display:none;background:rgba(0,20,8,.94);border:2px solid #ffd35a;border-radius:16px;padding:16px}
+  #ask p{margin:0 0 12px;font-size:16px}
+  #ask button{font-size:18px;font-weight:700;padding:12px 0;width:48%;border-radius:12px;border:0}
+  #yes{background:#35ff7a;color:#001a0a}#no{background:#3a1218;color:#ffd0d6;float:right}
+  #gate{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000d;z-index:9;font-size:18px;text-align:center;padding:30px}
+</style>
+</head>
+<body>
+<iframe id="viz" src="/viz/"></iframe>
+<div id="log"></div>
+<div id="status">tap to start</div>
+<div id="typebox"><input id="typed" placeholder="Type to Lefty" enterkeyhint="send"><button id="send">Send</button></div>
+<div id="ask"><p id="asktext"></p><button id="yes">Yes</button><button id="no">No</button></div>
+<div id="bar">
+  <button class="small" id="kbd" aria-label="Type">⌨︎</button>
+  <button id="talk">HOLD<br>TO TALK</button>
+  <button class="small" id="stop" aria-label="Stop talking">■</button>
+</div>
+<div id="gate">Tap anywhere to wake Lefty up.<br><small>(Your phone needs one tap before it can play sound.)</small></div>
+<script>
+const $ = id => document.getElementById(id);
+let ctx, analyser, micStream, rec, chunks = [], playing = null, queue = [], serverState = "idle", askId = null, wakeLock = null;
+const levelBuf = new Float32Array(512);
+
+// ── the face: feed the visualizer what we are actually playing ──
+function vizState(){
+  let level = 0, samples = [];
+  if (playing && analyser){
+    analyser.getFloatTimeDomainData(levelBuf);
+    let s = 0; for (const v of levelBuf) s += v*v;
+    level = Math.min(1, Math.sqrt(s/levelBuf.length) * 4);
+    for (let i = 0; i < 64; i++) samples.push(levelBuf[i*8]);
+  }
+  const st = rec && rec.state === "recording" ? "listening" : playing ? "speaking" : serverState;
+  return {state: st, level, alert: null, samples};
+}
+$("viz").addEventListener("load", () => {
+  const w = $("viz").contentWindow, real = w.fetch.bind(w);
+  w.fetch = (u, o) => String(u).includes("/state")
+    ? Promise.resolve(new Response(JSON.stringify(vizState()), {headers:{"Content-Type":"application/json"}}))
+    : real(u, o);
+});
+
+function line(text, me){
+  const d = document.createElement("div"); d.textContent = (me ? "You: " : "") + text;
+  if (me) d.className = "me";
+  $("log").appendChild(d);
+  while ($("log").children.length > 6) $("log").firstChild.remove();
+}
+function status(t){ $("status").textContent = t; }
+
+// ── audio out ──
+async function unlock(){
+  if (!ctx){
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = ctx.createAnalyser(); analyser.fftSize = 1024; analyser.connect(ctx.destination);
+  }
+  if (ctx.state !== "running") await ctx.resume();
+  try { if ("wakeLock" in navigator && !wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch(e){}
+}
+async function playNext(){
+  if (playing || !queue.length) return;
+  const id = queue.shift();
+  try {
+    const r = await fetch("/audio/" + id, {cache:"no-store"});
+    if (!r.ok) return playNext();
+    const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+    const src = ctx.createBufferSource(); src.buffer = buf; src.connect(analyser);
+    playing = src; src.onended = () => { playing = null; playNext(); };
+    src.start();
+  } catch(e){ playing = null; playNext(); }
+}
+function stopTalking(){ queue = []; if (playing){ try{ playing.stop(); }catch(e){} playing = null; } }
+
+// ── events from the Mac ──
+function connect(){
+  const es = new EventSource("/events");
+  es.onmessage = m => {
+    const ev = JSON.parse(m.data);
+    if (ev.type === "state"){ serverState = ev.state; if (!rec || rec.state !== "recording") status(ev.state === "idle" ? "ready" : ev.state); $("talk").classList.toggle("busy", ev.state === "thinking"); }
+    if (ev.type === "say"){ line(ev.text); if (ev.id && ctx){ queue.push(ev.id); playNext(); } }
+    if (ev.type === "ask"){ askId = ev.id; $("asktext").textContent = "Okay to do this? " + ev.text; $("ask").style.display = "block"; }
+    if (ev.type === "done"){ $("ask").style.display = "none"; }
+  };
+  es.onerror = () => { status("reconnecting…"); };
+}
+
+// ── mic ──
+function pickMime(){
+  for (const t of ["audio/mp4","audio/webm;codecs=opus","audio/webm"]) if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+  return "";
+}
+async function startRec(){
+  await unlock(); stopTalking();
+  if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  const mime = pickMime(); chunks = [];
+  rec = new MediaRecorder(micStream, mime ? {mimeType: mime} : undefined);
+  rec.ondataavailable = e => e.data.size && chunks.push(e.data);
+  rec.onstop = send;
+  rec.start(); $("talk").classList.add("rec"); status("listening");
+  if (navigator.vibrate) navigator.vibrate(15);
+}
+function stopRec(){ if (rec && rec.state === "recording"){ rec.stop(); $("talk").classList.remove("rec"); status("sending…"); } }
+async function send(){
+  const blob = new Blob(chunks, {type: rec.mimeType || "audio/mp4"});
+  if (blob.size < 1500){ status("too short, hold while you talk"); return; }
+  const r = await fetch("/talk", {method:"POST", body: blob});
+  const j = await r.json().catch(() => ({}));
+  if (j.ok) line(j.heard, true);
+  else status(j.why === "busy" ? "still working on the last one" : (j.why || "didn't catch that"));
+}
+
+$("talk").addEventListener("pointerdown", e => { e.preventDefault(); startRec().catch(err => status("mic blocked: " + err.name)); });
+for (const ev of ["pointerup","pointercancel","pointerleave"]) $("talk").addEventListener(ev, stopRec);
+$("stop").onclick = () => { unlock(); stopTalking(); };
+$("kbd").onclick = () => { const b = $("typebox"); b.style.display = b.style.display === "flex" ? "none" : "flex"; if (b.style.display === "flex") $("typed").focus(); };
+async function sendTyped(){
+  const t = $("typed").value.trim(); if (!t) return; await unlock();
+  $("typed").value = ""; line(t, true);
+  const r = await fetch("/type", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({text:t})});
+  const j = await r.json().catch(() => ({})); if (!j.ok) status(j.why === "busy" ? "still working on the last one" : "didn't send");
+}
+$("send").onclick = sendTyped;
+$("typed").addEventListener("keydown", e => { if (e.key === "Enter") sendTyped(); });
+async function answer(yes){
+  $("ask").style.display = "none";
+  await fetch("/answer", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({id: askId, yes})});
+}
+$("yes").onclick = () => answer(true);
+$("no").onclick = () => answer(false);
+$("gate").onclick = async () => { await unlock(); $("gate").remove(); status("ready"); };
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && ctx) ctx.resume(); });
+connect();
+</script>
+</body>
+</html>

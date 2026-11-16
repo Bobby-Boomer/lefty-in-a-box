@@ -46,6 +46,9 @@ We would rather tell you that in the first paragraph than have you find it in st
   (`telegram/`), standard-library Python, **nothing to install**. You make a bot with Telegram's own
   @BotFather, hand your agent the token, and the first message you send locks the bridge to your chat and
   nobody else's. `telegram/README.md` is the five-minute walkthrough.
+- **Talk to it from your phone** *(Mac, home Wi-Fi)* — hold a button on your phone, speak, and hear it answer,
+  with the visualizer as its face. Reuses the voice line's speech, so nothing new to install.
+  [Set it up](docs/phone-line.md).
 - **Hands** *(not in the box yet)* — a hand-tracked glass board you control in the air, no headset. It is
   real and it works, but no hands code ships here, so setup does not offer it. When it lands, this line
   changes.
