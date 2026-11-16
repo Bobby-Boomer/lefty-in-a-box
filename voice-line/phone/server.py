@@ -179,6 +179,14 @@ async def phone_consent(tool_name, input_data, context):
 brain = Brain(can_use_tool=phone_consent)
 
 
+# Diagnostic trail. Two wrong fixes for a "double voice" went out on 2026-11-16
+# because "it sounds fixed" was treated as evidence. This log answers the only
+# question that matters: was each sentence SENT once, and FETCHED once?
+#   SAY   lines = what the agent asked to be spoken (duplicates here = agent side)
+#   AUDIO lines = what the page actually pulled (more pulls than says = page side)
+SAY_N = {"turn": 0, "i": 0}
+
+
 async def say(sentence: str):
     """Voice one sentence and push it to the phone that asked. Others get text only."""
     sentence = sentence.strip()
@@ -190,6 +198,9 @@ async def say(sentence: str):
     if aid:
         AUDIO[aid] = pcm_to_wav(pcm, rate)
         AUDIO_AT[aid] = time.time()
+    SAY_N["i"] += 1
+    print(f"[phone] SAY turn={SAY_N['turn']} n={SAY_N['i']} id={aid} "
+          f"cid={talker} subs={len(SUBSCRIBERS)} text={sentence[:70]!r}", flush=True)
     for cid, q in list(SUBSCRIBERS.items()):
         q.put_nowait({"type": "say", "text": sentence,
                       "id": aid if cid == talker else None})
@@ -197,6 +208,10 @@ async def say(sentence: str):
 
 async def run_turn(text: str):
     async with TURN_LOCK:
+        SAY_N["turn"] += 1
+        SAY_N["i"] = 0
+        print(f"[phone] TURN {SAY_N['turn']} start, subs={len(SUBSCRIBERS)}, "
+              f"active={ACTIVE['cid']}", flush=True)
         emit({"type": "heard", "text": text})
         set_state("thinking")
         try:
@@ -280,6 +295,8 @@ async def talk(req: Request):
     if len(raw) < 1500:
         return JSONResponse({"ok": False, "why": "too short"})
     ACTIVE["cid"] = req.headers.get("x-lefty-cid")
+    print(f"[phone] TALK from page={req.headers.get('x-lefty-page')} "
+          f"cid={ACTIVE['cid']}", flush=True)
     set_state("thinking")
     try:
         text = await transcribe(raw)
@@ -326,6 +343,8 @@ async def audio(aid: str, req: Request):
         return deny()
     data = AUDIO.pop(aid, None)
     AUDIO_AT.pop(aid, None)
+    print(f"[phone] AUDIO fetch id={aid} hit={data is not None} "
+          f"page={req.headers.get('x-lefty-page')}", flush=True)
     if data is None:
         return Response(status_code=404)
     return Response(data, media_type="audio/wav", headers={"Cache-Control": "no-store"})

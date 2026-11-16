@@ -49,6 +49,12 @@ let ctx, analyser, micStream, rec, chunks = [], playing = null, queue = [], serv
 // audio comes to THIS page only. Without it, two open tabs split one reply between
 // them and you hear a double voice (2026-11-16).
 let cid = null;
+// Build stamp, sent on every request. Bump it with any change to this file.
+// WHY: twice on 2026-11-16 a fix looked unapplied because the phone was holding a
+// cached page, and there was no way to tell from the Mac which version was live.
+// Now the server log says it outright.
+const PAGE_BUILD = "2026-11-16-pump1";
+const H = extra => Object.assign({"x-lefty-page": PAGE_BUILD}, cid ? {"x-lefty-cid": cid} : {}, extra || {});
 const levelBuf = new Float32Array(512);
 
 // ── the face: feed the visualizer what we are actually playing ──
@@ -103,7 +109,7 @@ async function playNext(){
     while (queue.length) {
       const id = queue.shift();
       try {
-        const r = await fetch("/audio/" + id, {cache:"no-store"});
+        const r = await fetch("/audio/" + id, {cache:"no-store", headers: H()});
         if (!r.ok) continue;                      // clip already gone: skip, don't recurse
         const buf = await ctx.decodeAudioData(await r.arrayBuffer());
         const src = ctx.createBufferSource(); src.buffer = buf; src.connect(analyser);
@@ -151,7 +157,7 @@ function stopRec(){ if (rec && rec.state === "recording"){ rec.stop(); $("talk")
 async function send(){
   const blob = new Blob(chunks, {type: rec.mimeType || "audio/mp4"});
   if (blob.size < 1500){ status("too short, hold while you talk"); return; }
-  const r = await fetch("/talk", {method:"POST", headers: cid ? {"x-lefty-cid": cid} : {}, body: blob});
+  const r = await fetch("/talk", {method:"POST", headers: H(), body: blob});
   const j = await r.json().catch(() => ({}));
   if (j.ok) line(j.heard, true);
   else status(j.why === "busy" ? "still working on the last one" : (j.why || "didn't catch that"));
@@ -164,7 +170,7 @@ $("kbd").onclick = () => { const b = $("typebox"); b.style.display = b.style.dis
 async function sendTyped(){
   const t = $("typed").value.trim(); if (!t) return; await unlock();
   $("typed").value = ""; line(t, true);
-  const r = await fetch("/type", {method:"POST", headers: Object.assign({"Content-Type":"application/json"}, cid ? {"x-lefty-cid": cid} : {}), body: JSON.stringify({text:t})});
+  const r = await fetch("/type", {method:"POST", headers: H({"Content-Type":"application/json"}), body: JSON.stringify({text:t})});
   const j = await r.json().catch(() => ({})); if (!j.ok) status(j.why === "busy" ? "still working on the last one" : "didn't send");
 }
 $("send").onclick = sendTyped;
