@@ -45,6 +45,10 @@
 <script>
 const $ = id => document.getElementById(id);
 let ctx, analyser, micStream, rec, chunks = [], playing = null, queue = [], serverState = "idle", askId = null, wakeLock = null;
+// Our subscriber id, handed out by /events. Sent back on every turn so the reply
+// audio comes to THIS page only. Without it, two open tabs split one reply between
+// them and you hear a double voice (2026-11-16).
+let cid = null;
 const levelBuf = new Float32Array(512);
 
 // ── the face: feed the visualizer what we are actually playing ──
@@ -102,6 +106,7 @@ function connect(){
   const es = new EventSource("/events");
   es.onmessage = m => {
     const ev = JSON.parse(m.data);
+    if (ev.type === "hello"){ cid = ev.cid; }
     if (ev.type === "state"){ serverState = ev.state; if (!rec || rec.state !== "recording") status(ev.state === "idle" ? "ready" : ev.state); $("talk").classList.toggle("busy", ev.state === "thinking"); }
     if (ev.type === "say"){ line(ev.text); if (ev.id && ctx){ queue.push(ev.id); playNext(); } }
     if (ev.type === "ask"){ askId = ev.id; $("asktext").textContent = "Okay to do this? " + ev.text; $("ask").style.display = "block"; }
@@ -129,7 +134,7 @@ function stopRec(){ if (rec && rec.state === "recording"){ rec.stop(); $("talk")
 async function send(){
   const blob = new Blob(chunks, {type: rec.mimeType || "audio/mp4"});
   if (blob.size < 1500){ status("too short, hold while you talk"); return; }
-  const r = await fetch("/talk", {method:"POST", body: blob});
+  const r = await fetch("/talk", {method:"POST", headers: cid ? {"x-lefty-cid": cid} : {}, body: blob});
   const j = await r.json().catch(() => ({}));
   if (j.ok) line(j.heard, true);
   else status(j.why === "busy" ? "still working on the last one" : (j.why || "didn't catch that"));
@@ -142,7 +147,7 @@ $("kbd").onclick = () => { const b = $("typebox"); b.style.display = b.style.dis
 async function sendTyped(){
   const t = $("typed").value.trim(); if (!t) return; await unlock();
   $("typed").value = ""; line(t, true);
-  const r = await fetch("/type", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({text:t})});
+  const r = await fetch("/type", {method:"POST", headers: Object.assign({"Content-Type":"application/json"}, cid ? {"x-lefty-cid": cid} : {}), body: JSON.stringify({text:t})});
   const j = await r.json().catch(() => ({})); if (!j.ok) status(j.why === "busy" ? "still working on the last one" : "didn't send");
 }
 $("send").onclick = sendTyped;

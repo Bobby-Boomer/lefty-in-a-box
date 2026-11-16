@@ -75,7 +75,9 @@ app = FastAPI()
 STATE = {"state": "idle", "since": time.time()}
 AUDIO: dict[str, bytes] = {}          # id -> wav bytes, dropped after fetch or 10 min
 AUDIO_AT: dict[str, float] = {}
-SUBSCRIBERS: list[asyncio.Queue] = []
+SUBSCRIBERS: dict[str, asyncio.Queue] = {}   # client id -> its event queue
+# Which page gets the AUDIO. Set by whichever client sent the current turn.
+ACTIVE = {"cid": None}
 PENDING: dict[str, asyncio.Future] = {}
 TURN_LOCK = asyncio.Lock()
 mouth = Mouth()
@@ -89,8 +91,30 @@ def set_state(s: str):
 
 
 def emit(ev: dict):
-    for q in list(SUBSCRIBERS):
+    for q in list(SUBSCRIBERS.values()):
         q.put_nowait(ev)
+
+
+def speaking_cid() -> str | None:
+    """The one page allowed to play audio this turn.
+
+    WHY THIS EXISTS — the symptom was a double voice on the phone, 2026-11-16.
+    `say` used to broadcast the audio id to EVERY open page, and `/audio/<id>`
+    deletes the clip on first fetch. With two pages open (iOS Safari keeps a
+    backgrounded tab's EventSource alive, and every reconnect added another
+    subscriber) the two raced for the same clip: the winner played sentence 1, the
+    loser got a 404, fell through to playNext() and played sentence 2. Two voices,
+    out of step, reading different halves of one reply. It sounds like an echo; it
+    is actually the reply being split across tabs.
+
+    Fix: audio is addressed to one client. Every other page gets the text only.
+    """
+    cid = ACTIVE["cid"]
+    if cid in SUBSCRIBERS:
+        return cid
+    # The sender reconnected (new cid) or never identified itself: fall back to the
+    # newest page, which is the one being looked at.
+    return next(reversed(SUBSCRIBERS), None) if SUBSCRIBERS else None
 
 
 def authed(req: Request) -> bool:
@@ -156,16 +180,19 @@ brain = Brain(can_use_tool=phone_consent)
 
 
 async def say(sentence: str):
-    """Voice one sentence and push it to the phone."""
+    """Voice one sentence and push it to the phone that asked. Others get text only."""
     sentence = sentence.strip()
     if not sentence:
         return
     pcm, rate = await mouth._synthesize(sentence)
-    aid = uuid.uuid4().hex[:12]
-    if pcm:
+    talker = speaking_cid()
+    aid = uuid.uuid4().hex[:12] if (pcm and talker) else None
+    if aid:
         AUDIO[aid] = pcm_to_wav(pcm, rate)
         AUDIO_AT[aid] = time.time()
-    emit({"type": "say", "id": aid if pcm else None, "text": sentence})
+    for cid, q in list(SUBSCRIBERS.items()):
+        q.put_nowait({"type": "say", "text": sentence,
+                      "id": aid if cid == talker else None})
 
 
 async def run_turn(text: str):
@@ -249,6 +276,7 @@ async def talk(req: Request):
     raw = await req.body()
     if len(raw) < 1500:
         return JSONResponse({"ok": False, "why": "too short"})
+    ACTIVE["cid"] = req.headers.get("x-lefty-cid")
     set_state("thinking")
     try:
         text = await transcribe(raw)
@@ -272,6 +300,7 @@ async def typed(req: Request):
     text = ((await req.json()).get("text") or "").strip()
     if not text:
         return JSONResponse({"ok": False})
+    ACTIVE["cid"] = req.headers.get("x-lefty-cid")
     asyncio.create_task(run_turn(text))
     return JSONResponse({"ok": True})
 
@@ -303,8 +332,12 @@ async def audio(aid: str, req: Request):
 async def events(req: Request):
     if not authed(req):
         return deny()
+    cid = uuid.uuid4().hex[:12]
     q: asyncio.Queue = asyncio.Queue()
-    SUBSCRIBERS.append(q)
+    SUBSCRIBERS[cid] = q
+    # The page stores this and sends it back on /talk and /type, so the reply audio
+    # goes to the page that asked instead of to every open tab. See speaking_cid().
+    q.put_nowait({"type": "hello", "cid": cid})
     q.put_nowait({"type": "state", "state": STATE["state"]})
 
     async def gen():
@@ -318,8 +351,9 @@ async def events(req: Request):
                 if await req.is_disconnected():
                     break
         finally:
-            if q in SUBSCRIBERS:
-                SUBSCRIBERS.remove(q)
+            SUBSCRIBERS.pop(cid, None)
+            if ACTIVE["cid"] == cid:
+                ACTIVE["cid"] = None
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
