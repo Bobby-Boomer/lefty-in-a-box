@@ -56,6 +56,15 @@ with "caveman") was shaping the replies. The phone line switches that plugin off
 conversations only. If you use a different style plugin, add it to `EXTRA_SETTINGS` in
 `voice-line/phone/server.py`.
 
+**You hear two voices, or what sounds like an echo.** It is not an echo and it is not your speaker.
+It is one reply being split across two open pages. Each page used to be sent the audio for every
+sentence, and a sentence's audio can only be fetched once, so two pages raced: one won and played
+sentence 1, the other was refused and skipped ahead to sentence 2. Two voices, slightly apart, reading
+different halves of the same answer. **Fixed 2026-11-16** — the reply audio is now addressed to the one
+page that asked, and any other open page shows the text silently. If you are on a version before that,
+close every phone line tab except the one you are using. iOS Safari keeps a backgrounded tab connected,
+so a page you opened yesterday still counts as open.
+
 **The page loads but it never hears you.** The hearing server isn't running. Start the desk voice
 line once, or use `autostart.sh`, which starts it for you.
 
