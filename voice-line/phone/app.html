@@ -87,19 +87,36 @@ async function unlock(){
   if (ctx.state !== "running") await ctx.resume();
   try { if ("wakeLock" in navigator && !wakeLock) wakeLock = await navigator.wakeLock.request("screen"); } catch(e){}
 }
+// ONE pump, never two. `playing` is not a usable guard on its own: it stays null
+// across the fetch and the decode, and a reply arrives as a STREAM of say events, so
+// a second event walked straight past `if (playing)` while the first was still
+// awaiting, shifted the NEXT sentence off the queue and started it in parallel.
+// Two sentences, overlapping, out of step — the SECOND cause of the "double voice"
+// symptom, found 2026-11-16 after the server-side fix below had already landed.
+// This one needs only ONE tab open, so a single-tab test does not clear it.
+// `pumping` is set synchronously, so no second pump can start. Drains in order.
+let pumping = false;
 async function playNext(){
-  if (playing || !queue.length) return;
-  const id = queue.shift();
+  if (pumping) return;
+  pumping = true;
   try {
-    const r = await fetch("/audio/" + id, {cache:"no-store"});
-    if (!r.ok) return playNext();
-    const buf = await ctx.decodeAudioData(await r.arrayBuffer());
-    const src = ctx.createBufferSource(); src.buffer = buf; src.connect(analyser);
-    playing = src; src.onended = () => { playing = null; playNext(); };
-    src.start();
-  } catch(e){ playing = null; playNext(); }
+    while (queue.length) {
+      const id = queue.shift();
+      try {
+        const r = await fetch("/audio/" + id, {cache:"no-store"});
+        if (!r.ok) continue;                      // clip already gone: skip, don't recurse
+        const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+        const src = ctx.createBufferSource(); src.buffer = buf; src.connect(analyser);
+        playing = src;
+        // Wait for THIS clip to finish before taking the next. stop() fires onended
+        // too, so a tap on Stop unblocks the pump instead of stranding it.
+        await new Promise(done => { src.onended = done; src.start(); });
+      } catch(e){ /* bad clip: fall through and take the next one */ }
+      finally { playing = null; }
+    }
+  } finally { pumping = false; }
 }
-function stopTalking(){ queue = []; if (playing){ try{ playing.stop(); }catch(e){} playing = null; } }
+function stopTalking(){ queue = []; if (playing){ try{ playing.stop(); }catch(e){} } }
 
 // ── events from the Mac ──
 function connect(){

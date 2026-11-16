@@ -57,13 +57,26 @@ conversations only. If you use a different style plugin, add it to `EXTRA_SETTIN
 `voice-line/phone/server.py`.
 
 **You hear two voices, or what sounds like an echo.** It is not an echo and it is not your speaker.
-It is one reply being split across two open pages. Each page used to be sent the audio for every
-sentence, and a sentence's audio can only be fetched once, so two pages raced: one won and played
-sentence 1, the other was refused and skipped ahead to sentence 2. Two voices, slightly apart, reading
-different halves of the same answer. **Fixed 2026-11-16** — the reply audio is now addressed to the one
-page that asked, and any other open page shows the text silently. If you are on a version before that,
-close every phone line tab except the one you are using. iOS Safari keeps a backgrounded tab connected,
-so a page you opened yesterday still counts as open.
+It is two sentences of the same reply playing on top of each other. **Both fixed 2026-11-16**, and
+there were **two separate causes** — the first fix did not clear it, so if you are debugging this on an
+older copy, check for both:
+
+1. **Two sentences played in parallel in one page.** The player checked a single "already playing"
+   flag, but that flag was not set until after the clip had been fetched and decoded. A reply arrives
+   as a stream of sentences, so sentence 2 slipped past the check while sentence 1 was still loading
+   and started alongside it. **This needs only one tab, so a single-tab test does not rule it out.**
+   Now one pump drains the queue in order and cannot start twice.
+2. **One reply split across two open pages.** Every page used to be sent the audio for every
+   sentence, and a sentence's audio can only be fetched once, so two pages raced: one won and played
+   sentence 1, the loser was refused and skipped ahead to sentence 2. Now the audio is addressed to
+   the one page that asked, and any other open page shows the text silently.
+
+On an older copy, closing every phone line tab but the one you are using only addresses cause 2. iOS
+Safari keeps a backgrounded tab connected, so a page you opened yesterday still counts as open.
+
+**The fix is in the page, so reload it.** Restarting the server alone is not enough. The page is now
+served `Cache-Control: no-store` for exactly this reason — before that, Safari served a cached copy
+and a real fix looked like it had not been applied.
 
 **The page loads but it never hears you.** The hearing server isn't running. Start the desk voice
 line once, or use `autostart.sh`, which starts it for you.

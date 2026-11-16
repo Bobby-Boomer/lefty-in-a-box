@@ -233,7 +233,10 @@ async def transcribe(raw: bytes) -> str:
 async def index(req: Request):
     if not authed(req):
         return deny()
-    resp = HTMLResponse((HERE / "app.html").read_text())
+    # no-store so a fix to app.html lands on the next reload. Without it Safari served
+    # a cached page and a client-side fix looked like it had not been applied (2026-11-16).
+    resp = HTMLResponse((HERE / "app.html").read_text(),
+                        headers={"Cache-Control": "no-store"})
     if req.query_params.get("k"):
         resp.set_cookie("lk", TOKEN, max_age=60 * 60 * 24 * 365, httponly=True,
                         secure=True, samesite="strict")
