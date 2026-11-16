@@ -14,12 +14,13 @@ dependencies = [
     "webrtcvad>=2.0.10",
 ]
 
-[project.scripts]
-voice-line = "voice_line:main"
-
-[build-system]
-requires = ["uv_build>=0.12.1,<0.13.0"]
-build-backend = "uv_build"
+# The voice line is a folder of scripts, not an installable package. Until 2026-11-15 this
+# file declared a build backend and a `voice_line` entry point whose code was never in the
+# repo, so `uv sync` on a fresh clone failed with "Expected a Python module at
+# src/voice_line/__init__.py" and the installer stopped. package = false means uv just
+# installs the dependencies.
+[tool.uv]
+package = false
 
 [tool.uv.workspace]
 members = [
