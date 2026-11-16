@@ -4,12 +4,13 @@ Hold a button on your phone, say what you need, and hear your agent answer out l
 is its face, so you can see it listening, thinking and talking. The work still happens on your
 computer, with everything your agent knows.
 
-**Mac only for now, and on your home Wi-Fi.** Your phone and your Mac need to be on the same network.
+**Mac only for now.** Works on your home Wi-Fi out of the box, and on cell service too once you add
+Tailscale (free, five minutes, see *Away from home* below).
 
 ## What you need
 
 - The voice line already working on your Mac (it supplies the hearing and the voice).
-- Your phone on the same Wi-Fi as your Mac.
+- Your phone on the same Wi-Fi as your Mac — or Tailscale on both, to use it anywhere.
 
 ## Start it
 
@@ -65,5 +66,36 @@ line once, or use `autostart.sh`, which starts it for you.
 
 ## Away from home
 
-Not yet. That needs a private network between your phone and your Mac (Tailscale is the plan). This
-page will say when it's ready.
+**This works.** Your phone needs a route to your Mac, and [Tailscale](https://tailscale.com) gives you
+one for free: a private network between your own devices, no ports opened on your router.
+
+1. Install Tailscale on your Mac and on your phone, and sign in to the **same account** on both.
+2. On the Mac, ask for the link again:
+
+```
+bash ~/lefty/lefty-in-a-box/voice-line/phone/url.sh
+```
+
+It now prints a `...ts.net` address instead of a `192.168...` one, and a second line telling you which
+networks that link works on. **That one link works on cell and at home**, so there is nothing to swap
+when you walk out the door.
+
+`url.sh --lan` forces the old local address if you ever want the traffic off the tailnet.
+
+### If it worked at home and does nothing on cell
+
+Two causes, both already handled, both worth knowing because they look identical from the phone:
+
+- **The link was a home-only address.** A `192.168...` address is private to your Wi-Fi and resolves to
+  nothing once you leave it. Re-run `url.sh`; if it still prints `192.168...`, Tailscale is not running
+  or not signed in on the Mac.
+- **The certificate did not cover the Tailscale name.** The page is served over HTTPS because phone
+  browsers only allow the microphone on a secure page, and the certificate is self-signed. If it was
+  created before you set Tailscale up, it lists only your local addresses, so Safari refuses the
+  `ts.net` link — **which looks exactly like a broken connection even though the server is answering
+  fine.** `start.sh` now notices this and rebuilds the certificate once, keeping the old pair as
+  `.cert.pem.pre-tailscale`. Restart the phone line after installing Tailscale and it sorts itself out.
+
+Safari will ask you to trust the certificate the first time on each address. That is expected for a
+self-signed cert on your own machine. Tap through it once, then **Share → Add to Home Screen** and it
+opens like an app.
