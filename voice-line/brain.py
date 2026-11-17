@@ -42,6 +42,30 @@ Rules for spoken output:
 # why. The launchers pass --cwd explicitly; this is the belt to that braces.
 DEFAULT_CWD = str(Path(__file__).resolve().parent.parent)
 
+# What happens when a session rotates mid-conversation.
+#
+# THE SYMPTOM, fixed 2026-11-17: you are mid-conversation, the line stops,
+# announces "I'm starting a fresh session", and asks YOU to remind it where you
+# were — about the work you were both just doing. It never needed the recap.
+# The memory folder holds the state and the agent reads it anyway, so the
+# question was pure friction, and it made the agent look like it had amnesia at
+# the exact moment it should look like a colleague.
+#
+# Rotation is now SILENT. No announcement, no question. The first turn of the
+# new session carries this preamble instead, so the agent re-orients itself from
+# memory/ before it answers. Do not put the announcement back.
+REORIENT_PREAMBLE = """[SESSION ROTATED — internal note from the voice line, not from the user.
+Your conversation context was just cleared on purpose (age or transcript size).
+Do NOT announce this. Do NOT ask the user where you left off, to catch you up,
+or to remind you what you were doing. Re-orient yourself silently first: read
+your boot file (agent.md) and memory/Memory.md, plus today's note in
+memory/daily/ and yesterday's if it is there, then answer the message below as
+if you had been here the whole time. If one specific fact you need is genuinely
+written down nowhere, ask about that one fact — never a blanket "remind me where
+we were".]
+
+"""
+
 # CRITICAL: query() is one-shot — without resume, every turn is a brand-new
 # session and the conversation cannot remember the sentence before it. We hold
 # the session id and thread it through every turn.
@@ -265,13 +289,6 @@ class Brain:
             # Release the prompt generator even if the turn raised, or it
             # would sit waiting on an event nobody is left to set.
             done.set()
-        # Turn boundary is the only safe place to rotate: nothing is mid-reply.
-        if self._should_retire():
-            self._clear_session()
-            if on_sentence:
-                await on_sentence(
-                    "Quick heads up, I'm starting a fresh session, so remind me where we were."
-                )
         self._warmed = True
 
     async def turn(self, user_text: str, on_sentence=None) -> str:
@@ -281,6 +298,14 @@ class Brain:
         Returns the full response text.
         """
         spoke = []
+        # Both caps get checked here, at the turn boundary, because that is the
+        # only safe place to rotate — nothing is mid-reply. Checking in warmup()
+        # instead (as this did until 2026-11-17) means a line left running for
+        # days never re-checks, which is the 97-hour/45MB failure the
+        # SESSION_MAX_BYTES comment above describes.
+        if self._should_retire():
+            self._clear_session()
+            user_text = REORIENT_PREAMBLE + user_text
         try:
             return await self._run_turn(user_text, on_sentence, spoke)
         except Exception:
@@ -289,8 +314,13 @@ class Brain:
             if self._session_id is None or spoke:
                 raise
             # The stored session was rejected — expired or pruned. Drop it and
-            # take the turn fresh rather than losing what Bobby just said.
+            # take the turn fresh rather than losing what the user just said.
+            # Same deal as a rotation: the retry lands in a context-free
+            # session, so it gets the self-brief too instead of asking for a
+            # recap.
             self._clear_session()
+            if not user_text.startswith("[SESSION ROTATED"):
+                user_text = REORIENT_PREAMBLE + user_text
             return await self._run_turn(user_text, on_sentence, spoke)
 
     async def _run_turn(self, user_text: str, on_sentence, spoke: list) -> str:

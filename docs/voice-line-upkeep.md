@@ -64,11 +64,34 @@ hitting the talk key to cut off answers that are not wrong, just late.
 The age and size caps used to be checked only at start-up. A voice line that never restarts never
 re-checks them: one ran four days, its session hit 97 hours and a 45 MB transcript, and every turn
 was dragging about 650K tokens of context. Now `brain.py` checks both at the start of each turn,
-before anything is spoken. Past either cap, it says it is starting fresh and takes the turn in a
-new session. The boot script stays as the first line of defence.
+before anything is spoken. Past either cap, it drops the session pointer and takes the turn in a
+new one. The boot script stays as the first line of defence.
 
 **You lose nothing that matters.** Your memory folder is the memory. The transcript is just the raw
 log of how you got there.
+
+### And the rotation is silent — it never asks you to catch it up
+
+**Symptom:** mid-conversation your agent stops, announces that it is starting a fresh session, and
+asks *you* to remind it where you were. On work you were both in the middle of two seconds ago. It
+feels like it just got a lobotomy, and you have to retype the context before you can get an answer.
+
+That announcement was real, and it was wrong on both counts. The agent did not need the recap: your
+memory folder holds the state and it reads those files at the top of every conversation anyway. So
+the question only moved its job onto you.
+
+Rotation is now **silent**. No announcement, no question. Instead the first turn of the new session
+quietly carries a `REORIENT_PREAMBLE` (in `brain.py`) telling the agent to read its boot file,
+`memory/Memory.md` and today's daily note *first*, then answer as if it had been there all along. If
+one specific fact is genuinely written down nowhere, it asks about that one fact — never a blanket
+recap.
+
+The same preamble rides the retry path, where a stored session id gets rejected as expired or pruned
+and the turn has to be taken fresh. Same context-free session, same symptom, same fix.
+
+> Your agent's boot file carries the matching instruction, so this holds in the terminal too — after
+> a compaction or at the start of any new conversation. Belt and braces: the preamble handles the
+> voice line, the boot file handles the behaviour everywhere.
 
 ### Guard 3: the transcripts themselves
 
