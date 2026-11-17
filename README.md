@@ -158,6 +158,14 @@ It finds what you have, keeps what is yours, and upgrades the rest. It never del
 
 ---
 
+## If something looks wrong
+
+- **Lefty boots with no name, or says your `CLAUDE.md` is missing, or the browser dies with
+  `error -11`** → [docs/icloud-offloading.md](docs/icloud-offloading.md). Your files are fine; iCloud
+  took them off the disk. There is a guard in `bin/` that fixes it for good.
+
+---
+
 ## Who made this, and why it is free
 
 Built by [Bobby Boomer](https://bobbyboomer.com) while running real businesses with it every day. It is

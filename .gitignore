@@ -38,3 +38,6 @@ agent.md
 
 # Notes between a member's agents (skills/second-agent.md). Theirs, never shipped.
 handoff/
+
+# Guard and tool logs — local runtime, never shipped
+logs/
