@@ -42,10 +42,8 @@ import brain as brain_mod  # noqa: E402
 # Own session. The desk voice line holds .voice_session; two processes resuming the
 # same session at once would interleave turns into one transcript.
 brain_mod.SESSION_FILE = HERE / ".phone_session"
-# Spoken replies in normal sentences. If you use a terse-style plugin (caveman is the one we hit,
-# 2026-11-15), its clipped fragments sound broken read aloud, and it re-injects itself on every
-# prompt, so the phone switches it off for its own sessions only. Harmless if not installed.
-brain_mod.EXTRA_SETTINGS = json.dumps({"enabledPlugins": {"caveman@caveman": False}})
+# Normal sentences are brain.py's default now, for every spoken channel. Setting it here
+# only (2026-11-15) left the desk line talking in clipped fragments for five more days.
 from brain import Brain  # noqa: E402
 import consent  # noqa: E402  (reuse its vault exemption, wording and audit log)
 from mouth import Mouth  # noqa: E402
