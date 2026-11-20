@@ -145,10 +145,15 @@ SYSTEM_PROMPT = {
 }
 
 
-# Extra settings JSON handed to the CLI as --settings, or None (the default, which changes
-# nothing). The phone line uses it to switch a style plugin off for its own sessions. A
-# plugin that re-injects on every prompt cannot be turned off with an env var alone.
-EXTRA_SETTINGS: str | None = None
+# Extra settings JSON handed to the CLI as --settings. Every spoken channel switches
+# terse-style plugins off: their clipped fragments sound broken read aloud, and such a
+# plugin re-injects itself on every prompt, so an env var alone will not stop it. The
+# entry is harmless if the plugin is not installed.
+#
+# Learned twice. We patched only the phone server the first time (2026-11-15) and the
+# desk line kept speaking in fragments for five days until the owner said "I thought we
+# had fixed that." The default belongs here, where every channel reads it.
+EXTRA_SETTINGS: str | None = json.dumps({"enabledPlugins": {"caveman@caveman": False}})
 
 
 class Brain:
