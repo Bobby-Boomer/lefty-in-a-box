@@ -51,6 +51,30 @@ there and the job fails without telling you. `autostart.sh` checks and stops you
 
 **"Locked. Open the link with the access key."** Open the full link from `url.sh` once on that phone.
 
+**It worked for weeks, then one morning every question comes back as the generic failure line, and
+the log says nothing useful.** Your sign-in expired. An interactive `claude auth login` session has a
+**hard expiry that renewing does not move** — check yours with `claude auth status` and look at
+`loginExpiresAt`. Once it passes, the CLI answers:
+
+> Failed to authenticate: this login reached its time limit and cannot be renewed. Run
+> `claude auth login` to sign in again, or use `claude setup-token` and set
+> `CLAUDE_CODE_OAUTH_TOKEN` for unattended jobs
+
+An always-on phone line has nobody at the keyboard to click through a browser login, so it needs its
+own long-lived token:
+
+1. Run `claude setup-token` once. It needs a Claude subscription.
+2. Save the token to `~/.claude-oauth-token` and `chmod 600 ~/.claude-oauth-token`.
+3. Restart the always-on job. `always-on.sh` reads that file and logs *"using the long-lived token"*
+   so you can see it took.
+
+Set `PHONE_TOKEN_FILE` if you keep it somewhere else. **Do not put the token in `~/.zshenv`** — a
+token session runs at reduced scope (`user:inference` only), so exporting it everywhere quietly
+downgrades the interactive sessions you use at your desk. The script sets it for that one job instead.
+
+**If you run other unattended jobs against the same agent, they have this problem too.** They are all
+borrowing one login that will expire on one morning, and they will all stop together.
+
 **It hears you but answers in clipped, broken-sounding fragments.** A terse-style plugin (we hit this
 with "caveman") was shaping the replies. The phone line switches that plugin off for its own
 conversations only. If you use a different style plugin, add it to `EXTRA_SETTINGS` in
