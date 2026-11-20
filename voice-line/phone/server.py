@@ -274,7 +274,15 @@ async def viz(req: Request):
 async def viz_asset(name: str, req: Request):
     if not authed(req) or "/" in name or name.startswith("."):
         return deny()
-    return FileResponse(VIZ_DIR / "assets" / name)
+    # Every asset here is OPTIONAL — the visualizer draws its face procedurally and
+    # only swaps in assets/face.png if you drop one there. FileResponse on a missing
+    # path raises inside the response, so a stock install (no face.png) fills the
+    # error log with full tracebacks for a file that is not meant to exist. Answer
+    # 404 and let the page's img.onerror keep the procedural face.
+    path = VIZ_DIR / "assets" / name
+    if not path.is_file():
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return FileResponse(path)
 
 
 @app.get("/state")
