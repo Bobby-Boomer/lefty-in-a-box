@@ -49,6 +49,12 @@ We would rather tell you that in the first paragraph than have you find it in st
 - **Talk to it from your phone** *(Mac, home Wi-Fi)* — hold a button on your phone, speak, and hear it answer,
   with the visualizer as its face. Reuses the voice line's speech, so nothing new to install.
   [Set it up](docs/phone-line.md).
+- **More than one agent, actually working together** — a shared inbox on disk (`agent-bus/`) so your
+  agents hand work to each other instead of routing everything through you. **The part that matters is
+  the watcher:** an agent that reports in and waits looks exactly like an agent that is working, and on
+  the machine this came from that cost five hours of a finished job sitting on disk. Now an unworked
+  queue pings your manager agent, and reaches you only if the manager ignores it.
+  [Set it up](docs/second-agent.md). *(The bus runs anywhere; the watcher is macOS-only.)*
 - **It reaches YOU** — the phone line only answers when you open it, so on its own it is not a way for your
   agent to get hold of you. `voice-line/notify.py` is: it pushes a message to your phone and can attach a
   **tap-to-talk link straight into the voice line.** The part worth knowing is why it checks the channel

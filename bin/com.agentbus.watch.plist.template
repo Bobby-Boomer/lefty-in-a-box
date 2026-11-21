@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  agent-watch, every 5 minutes. macOS only.
+
+  INSTALL:
+    1. Replace __BIN__ with the absolute path to this kit's bin/ directory.
+    2. Save as ~/Library/LaunchAgents/com.agentbus.watch.plist
+    3. launchctl load ~/Library/LaunchAgents/com.agentbus.watch.plist
+
+  TWO TRAPS, both paid for on the original machine:
+    * The script path must contain NO SPACES. "zsh -lc <path>" treats the path
+      as a command string, so a space silently breaks it.
+    * Nothing this job reads may live under ~/Documents. launchd is blocked from
+      Documents by macOS privacy protection and will simply read nothing.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.agentbus.watch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>-lc</string>
+        <string>__BIN__/agent-watch.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>300</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/agentwatch.out</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/agentwatch.err</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
