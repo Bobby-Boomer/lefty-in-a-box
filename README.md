@@ -49,6 +49,12 @@ We would rather tell you that in the first paragraph than have you find it in st
 - **Talk to it from your phone** *(Mac, home Wi-Fi)* — hold a button on your phone, speak, and hear it answer,
   with the visualizer as its face. Reuses the voice line's speech, so nothing new to install.
   [Set it up](docs/phone-line.md).
+- **It reaches YOU** — the phone line only answers when you open it, so on its own it is not a way for your
+  agent to get hold of you. `voice-line/notify.py` is: it pushes a message to your phone and can attach a
+  **tap-to-talk link straight into the voice line.** The part worth knowing is why it checks the channel
+  before sending — **a revoked bot token still looks perfectly fine on disk**, so the naive version
+  reported success while every message was thrown away.
+  [How it works, and how to prove it still works](docs/push-notifications.md).
 - **Hands** *(not in the box yet)* — a hand-tracked glass board you control in the air, no headset. It is
   real and it works, but no hands code ships here, so setup does not offer it. When it lands, this line
   changes.
