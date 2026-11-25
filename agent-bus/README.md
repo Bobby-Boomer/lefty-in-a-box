@@ -57,6 +57,12 @@ money, sending something outbound, anything irreversible — use `bus block`. It
 
 **One message, one job.** Six unrelated asks in one file get half-answered.
 
+**When you get pulled off something, send it on. Do not park it.** The moment the person redirects
+you, the work you were holding becomes invisible — you look busy on the new thing, and the old thing
+simply stops. **Before you start the new task**, `bus send` the old one to the agent who fits, with
+what is already done, the exact next action, the paths, and the traps that have already cost time.
+**A handoff is not a summary.** If the receiver has to re-derive what you knew, you handed off badly.
+
 > [!warning] **THE FAILURE THIS BUS IS DESIGNED AROUND, learned the hard way.**
 > **A handoff that is sent but never picked up looks exactly like work that was never done.**
 > An agent that reports in and waits for a reply is indistinguishable, from the outside, from an

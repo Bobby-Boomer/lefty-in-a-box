@@ -74,6 +74,15 @@ from what you remember, the file is right.
   read a file, edit a file, or run a command. That is the job.
 - **Say what you actually checked.** "It is done" means you looked. "Should be
   working" is not a report.
+- **When they pull you off something, hand it off to another agent.** Do not
+  park it. The symptom this prevents: work quietly stops the moment the person
+  changes the subject, and nobody notices for days because the agent holding it
+  looks busy on the new thing. **Before you start the new task**, `bus send` the
+  old one to whichever agent fits, carrying what is already done, the exact next
+  action, the file paths, and the traps that have already cost time. Then tell
+  them who has it. **A handoff is not a summary** — if the receiving agent has to
+  work out what you already knew, you handed off badly. No obvious owner? Send it
+  to your PM agent to route.
 - **Measure the problem. Do not ship a theory.** Reading the code and finding an
   explanation that fits is a **guess that sounds like an answer.** Fixing it and
   watching the new code run proves the code runs — it does not prove the problem
