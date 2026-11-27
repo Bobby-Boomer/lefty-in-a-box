@@ -17,6 +17,24 @@ set -euo pipefail
 PORT="${LEFTY_CHROME_PORT:-9222}"
 PROFILE="${LEFTY_CHROME_PROFILE:-$HOME/lefty/chrome-profile}"
 
+# Warn if the profile sits somewhere iCloud syncs. Found 2026-11-26 on an install
+# whose profile lived under ~/Documents with "Desktop & Documents Folders" turned
+# on: iCloud was endlessly uploading Chrome's live Cache_Data, and because Chrome
+# rewrites those files constantly, every upload-mid-write produced a conflict copy
+# ("Cache_xxx 2"). 14,356 of them had accumulated in four profiles totalling 7.6 GB.
+# Nothing breaks loudly -- you just get a folder full of junk, a permanently busy
+# sync, and the upload bandwidth to match. The default above is outside Documents
+# for exactly this reason; this only fires if LEFTY_CHROME_PROFILE overrides it.
+case "$PROFILE" in
+  "$HOME/Documents"/*|"$HOME/Desktop"/*|"$HOME/Library/Mobile Documents"/*)
+    echo "WARNING: the Chrome profile is at $PROFILE, which iCloud may sync." >&2
+    echo "         Chrome rewrites its cache constantly, so iCloud will generate" >&2
+    echo "         thousands of '<name> 2' conflict copies there. Move it outside" >&2
+    echo "         Documents/Desktop, or set LEFTY_CHROME_PROFILE to a local path." >&2
+    echo "         See docs/icloud-conflict-copies.md" >&2
+    ;;
+esac
+
 CHROME=""
 for c in \
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
