@@ -51,6 +51,23 @@ Nothing pushes. If you do not look, you do not see it.
 
 **Answer `reply` messages before starting new work.** Another agent is blocked on you.
 
+> [!warning] **Three ways a message ages forever while looking perfectly healthy.** All three were
+> found on 2026-11-26 after the watcher had been reporting the same "idle agent with work waiting"
+> inboxes for days. In every case the inbox was fine and the *protocol* was wrong.
+>
+> 1. **Never send `needs: fyi` to an agent that has no disk access.** A bridged agent (one running in a
+>    phone app, relayed through a shared folder) cannot run `bus done`, so an `fyi` addressed to it is
+>    **permanently unclosable** and alerts forever. Four such items had aged up to **61 days** while
+>    nothing was actually waiting on anyone. **Send `action` so a reply closes it, or close the `fyi`
+>    yourself when you send it.**
+> 2. **`bus reply` answers the SENDER — not the inbox the file is sitting in.** So replying to a message
+>    *you* sent lands back in **your own inbox** and the recipient never sees it. Three instructions were
+>    lost this way in a single session, and it is silent: the reply reports success. **To add to a
+>    message you sent, use `bus send` to that agent.**
+> 3. **A charter is not a task, so never leave one open as `action`.** "You own account X" is a standing
+>    role — it can never be completed, so it trips the watcher every day while the agent is visibly doing
+>    the work. **Charters belong in the agent's `CLAUDE.md`. The bus is for work that finishes.**
+
 **Escalate rather than guess.** If a message needs a decision only the owner can make — spending
 money, sending something outbound, anything irreversible — use `bus block`. It moves the message to
 `blocked/` and fires a notification. Do not sit on it and do not decide it yourself.
