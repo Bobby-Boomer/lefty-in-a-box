@@ -175,6 +175,11 @@ It finds what you have, keeps what is yours, and upgrades the rest. It never del
 - **Lefty boots with no name, or says your `CLAUDE.md` is missing, or the browser dies with
   `error -11`** → [docs/icloud-offloading.md](docs/icloud-offloading.md). Your files are fine; iCloud
   took them off the disk. There is a guard in `bin/` that fixes it for good.
+- **Your folders fill up with files ending in " 2", and iCloud never finishes syncing** →
+  [docs/icloud-conflict-copies.md](docs/icloud-conflict-copies.md). A different problem from the one
+  above: iCloud is trying to upload files while an app is still writing them, so it keeps both copies.
+  Usually a browser profile left somewhere iCloud syncs. **A duplicate sitting next to a source file is
+  how the wrong version ships**, so it is worth fixing rather than ignoring.
 
 ---
 
