@@ -51,9 +51,10 @@ Nothing pushes. If you do not look, you do not see it.
 
 **Answer `reply` messages before starting new work.** Another agent is blocked on you.
 
-> [!warning] **Three ways a message ages forever while looking perfectly healthy.** All three were
-> found on 2026-11-26 after the watcher had been reporting the same "idle agent with work waiting"
-> inboxes for days. In every case the inbox was fine and the *protocol* was wrong.
+> [!warning] **Four ways a message ages forever while looking perfectly healthy.** The first three were
+> found on 2026-11-26 and the fourth on 2026-11-27, all after the watcher had been reporting the same
+> "idle agent with work waiting" inboxes for days. In every case the inbox was fine and the *protocol*
+> was wrong.
 >
 > 1. **Never send `needs: fyi` to an agent that has no disk access.** A bridged agent (one running in a
 >    phone app, relayed through a shared folder) cannot run `bus done`, so an `fyi` addressed to it is
@@ -67,6 +68,22 @@ Nothing pushes. If you do not look, you do not see it.
 > 3. **A charter is not a task, so never leave one open as `action`.** "You own account X" is a standing
 >    role — it can never be completed, so it trips the watcher every day while the agent is visibly doing
 >    the work. **Charters belong in the agent's `CLAUDE.md`. The bus is for work that finishes.**
+> 4. **Never narrate a moving situation as a series of `action` items.**
+>    **The symptom you would notice:** the watcher says one agent has a dozen items going back days, you
+>    open the inbox expecting neglect, and most of the messages are the *same job* at different moments —
+>    "here is the blocker", "the blocker is decided, wait for me", "you're unblocked, go". The agent had
+>    already done the work. **It could not close any of those messages, because a later message had
+>    overtaken them, and a superseded `action` item never closes itself.** In the real case nine of
+>    thirteen items were superseded, already delivered, or a constraint sent as though it were a task.
+>    - **Send one message once the situation is settled**, not a running commentary while it moves.
+>    - **A status change to work already assigned is not new work.** Unblocking someone, correcting a
+>      detail, reporting that a gate cleared → **`--needs fyi`**, never `action`.
+>    - **A constraint is not work either.** "Don't glob these filenames" is a rule attached to an
+>      existing job. Put it *inside* that job's message.
+>    - **If you already sent the chain, you clean it up — the receiving agent can't.** Close each
+>      superseded item with `bus done` **plus a note saying why**, then send one current-state message
+>      carrying every detail forward verbatim. *Silently archiving someone else's inbox is how a real
+>      instruction disappears.*
 
 **Escalate rather than guess.** If a message needs a decision only the owner can make — spending
 money, sending something outbound, anything irreversible — use `bus block`. It moves the message to
